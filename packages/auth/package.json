@@ -1,0 +1,15 @@
+{
+  "name": "@aila/auth",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./server": "./src/server-entry.ts"
+  },
+  "dependencies": {
+    "@supabase/ssr": "^0.7.0",
+    "@supabase/supabase-js": "^2.0.0",
+    "@aila/db": "workspace:*"
+  }
+}

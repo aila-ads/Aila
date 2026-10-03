@@ -1,0 +1,27 @@
+# Secrets / local environment
+.env
+.env.*
+!.env.example
+
+# Local/editor/build state
+.next/
+node_modules/
+coverage/
+*.log
+*.tsbuildinfo
+
+# Local backups / temporary files
+*.backup
+*.save
+*.bak
+*.tmp
+ProjectsAila
+
+# Repository-only tooling and documentation
+.agents/
+skills-lock.json
+docs/
+infrastructure/
+
+# Local Vercel/project metadata
+.vercel/

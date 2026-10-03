@@ -1,0 +1,1 @@
+export { createAuthBrowserClient } from './browser';

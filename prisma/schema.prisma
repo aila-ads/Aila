@@ -1,0 +1,648 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================================
+// ENUMS
+// ============================================================
+
+enum AccountStatus {
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+enum MembershipRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum TrialStatus {
+  ACTIVE
+  EXPIRED
+  CONVERTED
+  CANCELLED
+}
+
+enum SubscriptionStatus {
+  INCOMPLETE
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+  EXPIRED
+  UNPAID
+}
+
+enum BillingProvider {
+  FLUTTERWAVE
+}
+
+enum PlanCode {
+  AILA_PRO
+}
+
+enum EntitlementStatus {
+  ACTIVE
+  SUSPENDED
+  REVOKED
+}
+
+enum ProductCode {
+  INTELLIGENCE
+  WRITER
+  TRANSLATE
+  ADS
+  LEGAL
+  CODING
+}
+
+enum UsageType {
+  AI_REQUEST
+  AI_INPUT_TOKENS
+  AI_OUTPUT_TOKENS
+  FILE_UPLOAD
+  FILE_STORAGE
+  PROJECT_CREATED
+  EXPORT
+}
+
+enum ProjectStatus {
+  ACTIVE
+  ARCHIVED
+  DELETED
+}
+
+enum ProjectRole {
+  OWNER
+  EDITOR
+  VIEWER
+}
+
+enum FileStatus {
+  ACTIVE
+  PROCESSING
+  FAILED
+  DELETED
+}
+
+enum FileSource {
+  UPLOAD
+  GENERATED
+  IMPORTED
+}
+
+enum ConversationStatus {
+  ACTIVE
+  ARCHIVED
+  DELETED
+}
+
+enum MessageRole {
+  USER
+  ASSISTANT
+  SYSTEM
+  TOOL
+}
+
+enum NotificationType {
+  SYSTEM
+  BILLING
+  SECURITY
+  PRODUCT
+  USAGE
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  LOGOUT
+  PASSWORD_CHANGE
+  EMAIL_CHANGE
+  SUBSCRIPTION_CHANGE
+  ENTITLEMENT_CHANGE
+  FILE_ACCESS
+  EXPORT
+  SECURITY_EVENT
+}
+
+enum AuditSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+// ============================================================
+// ACCOUNT / IDENTITY
+// ============================================================
+
+model Account {
+  id     String        @id @default(cuid())
+  status AccountStatus @default(ACTIVE)
+
+  name         String?
+  primaryEmail String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  users         User[]
+  memberships   Membership[]
+  trial         Trial?
+  subscriptions Subscription[]
+  entitlements  Entitlement[]
+  usageRecords  UsageRecord[]
+  files         File[]
+  conversations Conversation[]
+  notifications Notification[]
+  settings      UserSettings?
+  auditLogs     AuditLog[]
+  billingEvents BillingEvent[]
+  projects      Project[]
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+model User {
+  id         String @id @default(cuid())
+  accountId  String
+  authUserId String @unique
+
+  email           String    @unique
+  emailVerifiedAt DateTime?
+  name            String?
+
+  status AccountStatus @default(ACTIVE)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  memberships     Membership[]
+  projects        ProjectMember[]
+  createdProjects Project[]
+  conversations   Conversation[]
+  messages        Message[]
+  notifications   Notification[]
+  settings        UserSettings?
+  auditLogs       AuditLog[]
+  usageRecords    UsageRecord[]
+  files           File[]
+
+  @@index([accountId])
+  @@index([status])
+}
+
+model Membership {
+  id        String @id @default(cuid())
+  accountId String
+  userId    String
+
+  role MembershipRole @default(MEMBER)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, userId])
+  @@index([userId])
+  @@index([accountId, role])
+}
+
+// ============================================================
+// TRIAL
+// ============================================================
+
+model Trial {
+  id        String @id @default(cuid())
+  accountId String @unique
+
+  startedAt DateTime
+  expiresAt DateTime
+  endedAt   DateTime?
+
+  status TrialStatus @default(ACTIVE)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([expiresAt])
+}
+
+// ============================================================
+// BILLING
+// ============================================================
+
+model Subscription {
+  id        String @id @default(cuid())
+  accountId String
+
+  provider               BillingProvider
+  providerCustomerId     String?
+  providerSubscriptionId String?
+
+  plan   PlanCode
+  status SubscriptionStatus
+
+  currentPeriodStart DateTime?
+  currentPeriodEnd   DateTime?
+
+  cancelAtPeriodEnd Boolean   @default(false)
+  canceledAt        DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  account       Account        @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  billingEvents BillingEvent[]
+
+  @@unique([provider, providerSubscriptionId])
+  @@index([accountId, status])
+  @@index([provider, providerCustomerId])
+  @@index([currentPeriodEnd])
+}
+
+model BillingEvent {
+  id             String  @id @default(cuid())
+  accountId      String?
+  subscriptionId String?
+
+  provider        BillingProvider
+  providerEventId String
+
+  eventType   String
+  payloadHash String
+
+  processedAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  account      Account?      @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  subscription Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+
+  @@unique([provider, providerEventId])
+  @@index([accountId])
+  @@index([subscriptionId])
+  @@index([eventType])
+  @@index([createdAt])
+}
+
+// ============================================================
+// ENTITLEMENTS
+// ============================================================
+
+model Entitlement {
+  id        String @id @default(cuid())
+  accountId String
+
+  product ProductCode
+  key     String
+  status  EntitlementStatus @default(ACTIVE)
+
+  source      String
+  effectiveAt DateTime  @default(now())
+  expiresAt   DateTime?
+
+  metadata Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, key])
+  @@index([accountId, status])
+  @@index([product, status])
+  @@index([expiresAt])
+}
+
+// ============================================================
+// USAGE
+// ============================================================
+
+model UsageRecord {
+  id String @id @default(cuid())
+
+  accountId String
+  userId    String?
+
+  product   ProductCode?
+  usageType UsageType
+
+  quantity Decimal @db.Decimal(20, 6)
+  unit     String?
+
+  model    String?
+  provider String?
+
+  requestId      String?
+  idempotencyKey String?
+
+  inputTokens  Int?
+  outputTokens Int?
+  totalTokens  Int?
+
+  estimatedCost Decimal? @db.Decimal(20, 8)
+  currency      String?
+
+  metadata Json?
+
+  createdAt DateTime @default(now())
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  user    User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([accountId, createdAt])
+  @@index([userId, createdAt])
+  @@index([product, createdAt])
+  @@index([usageType, createdAt])
+  @@index([requestId])
+  @@index([idempotencyKey])
+}
+
+// ============================================================
+// PROJECTS
+// ============================================================
+
+model Project {
+  id        String @id @default(cuid())
+  accountId String
+
+  name        String
+  description String?
+
+  status ProjectStatus @default(ACTIVE)
+
+  createdById String
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  createdBy User    @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  members       ProjectMember[]
+  folders       Folder[]
+  files         File[]
+  conversations Conversation[]
+
+  @@index([accountId, status])
+  @@index([createdById])
+  @@index([updatedAt])
+}
+
+model ProjectMember {
+  id        String @id @default(cuid())
+  projectId String
+  userId    String
+
+  role ProjectRole @default(VIEWER)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+  @@index([userId])
+}
+
+model Folder {
+  id        String @id @default(cuid())
+  projectId String
+
+  parentId String?
+
+  name String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project  Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  parent   Folder?  @relation("FolderTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children Folder[] @relation("FolderTree")
+  files    File[]
+
+  @@index([projectId])
+  @@index([parentId])
+}
+
+// ============================================================
+// FILES
+// ============================================================
+
+model File {
+  id String @id @default(cuid())
+
+  accountId String
+  userId    String
+
+  projectId String?
+  folderId  String?
+
+  name      String
+  mimeType  String
+  sizeBytes BigInt
+
+  storageKey String
+  checksum   String?
+
+  source FileSource
+  status FileStatus @default(PROCESSING)
+
+  metadata Json?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  account Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  user    User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  project Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  folder  Folder?  @relation(fields: [folderId], references: [id], onDelete: SetNull)
+
+  versions FileVersion[]
+
+  @@index([accountId, status])
+  @@index([userId])
+  @@index([projectId])
+  @@index([folderId])
+  @@index([storageKey])
+  @@index([createdAt])
+}
+
+model FileVersion {
+  id     String @id @default(cuid())
+  fileId String
+
+  version    Int
+  storageKey String
+  sizeBytes  BigInt
+  checksum   String?
+
+  metadata Json?
+
+  createdAt DateTime @default(now())
+
+  file File @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@unique([fileId, version])
+  @@index([fileId, createdAt])
+}
+
+// ============================================================
+// CONVERSATIONS / MESSAGES
+// ============================================================
+
+model Conversation {
+  id String @id @default(cuid())
+
+  accountId String
+  userId    String
+
+  projectId String?
+  product   ProductCode
+
+  title  String?
+  status ConversationStatus @default(ACTIVE)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  account Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  user    User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  messages Message[]
+
+  @@index([accountId, product, updatedAt])
+  @@index([userId, updatedAt])
+  @@index([projectId])
+  @@index([status])
+}
+
+model Message {
+  id String @id @default(cuid())
+
+  conversationId String
+  userId         String?
+
+  role MessageRole
+
+  content Json
+
+  model    String?
+  provider String?
+
+  inputTokens  Int?
+  outputTokens Int?
+  totalTokens  Int?
+
+  metadata Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([conversationId, createdAt])
+  @@index([userId, createdAt])
+}
+
+// ============================================================
+// NOTIFICATIONS / SETTINGS
+// ============================================================
+
+model Notification {
+  id String @id @default(cuid())
+
+  accountId String
+  userId    String
+
+  type NotificationType
+
+  title String
+  body  String
+
+  readAt DateTime?
+
+  metadata Json?
+
+  createdAt DateTime @default(now())
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt, createdAt])
+  @@index([accountId, createdAt])
+}
+
+model UserSettings {
+  id String @id @default(cuid())
+
+  accountId String @unique
+  userId    String @unique
+
+  locale   String @default("en-US")
+  timezone String @default("UTC")
+
+  preferences Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ============================================================
+// SECURITY / AUDIT
+// ============================================================
+
+model AuditLog {
+  id String @id @default(cuid())
+
+  accountId String?
+  userId    String?
+
+  action   AuditAction
+  severity AuditSeverity @default(INFO)
+
+  resourceType String?
+  resourceId   String?
+
+  ipAddress String?
+  userAgent String?
+
+  metadata Json?
+
+  createdAt DateTime @default(now())
+
+  account Account? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  user    User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([accountId, createdAt])
+  @@index([userId, createdAt])
+  @@index([action, createdAt])
+  @@index([severity, createdAt])
+  @@index([resourceType, resourceId])
+}
