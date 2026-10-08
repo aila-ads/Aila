@@ -5,3 +5,4 @@ allowBuilds:
   '@prisma/engines': true
   prisma: true
   core-js: false
+  unrs-resolver: false

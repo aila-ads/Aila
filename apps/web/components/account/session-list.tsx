@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, apiErrorMessage } from '../../lib/trpc/client';
+import { Button } from '../ui/button';
 
 export type SessionItem = {
   readonly id: string;
@@ -38,39 +39,43 @@ export function SessionList({ sessions }: { sessions: readonly SessionItem[] }) 
   }
 
   if (sessions.length === 0) {
-    return <p>No signed-in devices were found.</p>;
+    return <p className="text-sm text-muted-foreground">No signed-in devices were found.</p>;
   }
 
   return (
-    <div>
-      <ul>
+    <div className="grid gap-3">
+      <ul className="divide-y rounded-md border">
         {sessions.map((session) => (
-          <li key={session.id}>
-            <p>
-              <strong>{session.device ?? 'Unknown device'}</strong>
-              {session.current ? ' (this device)' : null}
-            </p>
-            <p>
-              Signed in {session.signedIn}. Expires {session.expires}.
-            </p>
+          <li key={session.id} className="flex flex-wrap items-center justify-between gap-3 p-4">
+            <div className="grid gap-1">
+              <p>
+                <strong>{session.device ?? 'Unknown device'}</strong>
+                {session.current ? ' (this device)' : null}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Signed in {session.signedIn}. Expires {session.expires}.
+              </p>
+            </div>
             {session.current ? null : (
-              <button
+              <Button
                 type="button"
+                variant="outline"
+                size="sm"
                 onClick={() => revoke(session.id)}
                 disabled={pending}
                 aria-label={`Sign out ${session.device ?? 'unknown device'}, signed in ${session.signedIn}`}
               >
                 {revoking === session.id ? 'Signing out…' : 'Sign out device'}
-              </button>
+              </Button>
             )}
           </li>
         ))}
       </ul>
 
-      <p role="status" aria-live="polite">
+      <p role="status" aria-live="polite" className="text-sm text-muted-foreground empty:hidden">
         {notice}
       </p>
-      {error ? <p role="alert">{error}</p> : null}
+      {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
     </div>
   );
 }

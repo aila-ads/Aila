@@ -1,9 +1,12 @@
 import { signOut } from '@aila/auth/actions';
+import { Button } from '../ui/button';
 
 export function SignOutButton() {
   return (
     <form action={signOut}>
-      <button type="submit">Sign out</button>
+      <Button type="submit" variant="outline">
+        Sign out
+      </Button>
     </form>
   );
 }
