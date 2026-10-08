@@ -1,27 +1,60 @@
+/**
+ * Server-only authentication configuration (APPLICATION-ARCHITECTURE §33-34,
+ * SECURITY-ARCHITECTURE §2.5). Values are read when first used at runtime,
+ * never at build time and never with a NEXT_PUBLIC_ prefix.
+ */
+
 export type AuthEnv = {
-  readonly supabaseUrl: string;
-  readonly supabaseAnonKey: string;
+  readonly baseUrl: string;
+  readonly cookieSecret: string;
 };
 
-/**
- * Reads the public Supabase configuration.
- *
- * Evaluated lazily (on call, not on import) so a missing variable surfaces as
- * a clear error at the point of use rather than when a module is loaded.
- * The `process.env.NEXT_PUBLIC_*` references must stay literal so Next.js can
- * inline them into browser bundles.
- */
+export type RateLimitEnv = {
+  readonly url: string;
+  readonly token: string;
+};
+
+function required(name: string): string {
+  const value = process.env[name];
+
+  if (!value) {
+    throw new Error(`${name} is required`);
+  }
+
+  return value;
+}
+
+function httpsUrl(name: string): string {
+  const value = required(name);
+  let url: URL;
+
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error(`${name} must be a valid URL`);
+  }
+
+  if (url.protocol !== 'https:') {
+    throw new Error(`${name} must use https`);
+  }
+
+  return value.replace(/\/+$/, '');
+}
+
 export function getAuthEnv(): AuthEnv {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const baseUrl = httpsUrl('NEON_AUTH_BASE_URL');
+  const cookieSecret = required('NEON_AUTH_COOKIE_SECRET');
 
-  if (!supabaseUrl) {
-    throw new Error("NEXT_PUBLIC_SUPABASE_URL is required");
+  if (cookieSecret.length < 32) {
+    throw new Error('NEON_AUTH_COOKIE_SECRET must contain at least 32 characters');
   }
 
-  if (!supabaseAnonKey) {
-    throw new Error("NEXT_PUBLIC_SUPABASE_ANON_KEY is required");
-  }
+  return { baseUrl, cookieSecret };
+}
 
-  return { supabaseUrl, supabaseAnonKey };
+export function getRateLimitEnv(): RateLimitEnv {
+  return {
+    url: httpsUrl('UPSTASH_REDIS_REST_URL'),
+    token: required('UPSTASH_REDIS_REST_TOKEN'),
+  };
 }

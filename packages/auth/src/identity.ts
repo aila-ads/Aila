@@ -1,5 +1,4 @@
-import type { User as SupabaseUser } from '@supabase/supabase-js';
-import { db } from '@aila/db';
+import { getDb } from '@aila/db';
 
 const TRIAL_DURATION_MS = 3 * 60 * 60 * 1000;
 
@@ -12,30 +11,75 @@ const PRODUCT_ENTITLEMENTS = [
   'CODING',
 ] as const;
 
-export async function ensureAilaIdentity(authUser: SupabaseUser) {
+/**
+ * The authenticated Neon Auth user, as returned in the Neon session.
+ * `id` is stored as `User.authUserId` (DATA-ARCHITECTURE §4, DATABASE-SCHEMA §7).
+ */
+export type NeonAuthUser = {
+  readonly id: string;
+  readonly email: string;
+  readonly emailVerified: boolean;
+  readonly name?: string | null;
+};
+
+export type AuthIdentityErrorCode = 'EMAIL_NOT_VERIFIED' | 'ACCOUNT_LINK_CONFLICT';
+
+export class AuthIdentityError extends Error {
+  constructor(readonly code: AuthIdentityErrorCode) {
+    super(code);
+    this.name = 'AuthIdentityError';
+  }
+}
+
+const identityInclude = { account: true, memberships: true } as const;
+
+/**
+ * Resolves the Aila user for an authenticated Neon Auth user.
+ *
+ * 1. A user already linked by `authUserId` is returned.
+ * 2. Otherwise, if exactly one existing user has the same email (case
+ *    insensitive), it is re-linked to the Neon Auth user ID. This keeps
+ *    users created under the previous auth provider. It only ever happens
+ *    for an email Neon Auth reports as verified.
+ * 3. Otherwise a new Aila account is provisioned (unchanged bootstrap:
+ *    account, user, OWNER membership, settings, trial, entitlements).
+ *
+ * Unverified emails are never linked or provisioned.
+ */
+export async function ensureAilaIdentity(authUser: NeonAuthUser) {
   if (!authUser.id) {
-    throw new Error('Authenticated Supabase user is missing an ID');
+    throw new Error('Authenticated Neon Auth user is missing an ID');
   }
 
   const email = authUser.email;
 
   if (!email) {
-    throw new Error('Authenticated Supabase user is missing an email address');
+    throw new Error('Authenticated Neon Auth user is missing an email address');
   }
 
-  const existing = await db.user.findUnique({
+  const existing = await getDb().user.findUnique({
     where: { authUserId: authUser.id },
-    include: { account: true, memberships: true },
+    include: identityInclude,
   });
 
   if (existing) {
     return existing;
   }
 
-  return db.$transaction(async (tx) => {
+  if (!authUser.emailVerified) {
+    throw new AuthIdentityError('EMAIL_NOT_VERIFIED');
+  }
+
+  const relinked = await relinkByVerifiedEmail(authUser, email);
+
+  if (relinked) {
+    return relinked;
+  }
+
+  return getDb().$transaction(async (tx) => {
     const raced = await tx.user.findUnique({
       where: { authUserId: authUser.id },
-      include: { account: true, memberships: true },
+      include: identityInclude,
     });
 
     if (raced) {
@@ -46,9 +90,7 @@ export async function ensureAilaIdentity(authUser: SupabaseUser) {
     const trialExpiresAt = new Date(now.getTime() + TRIAL_DURATION_MS);
 
     const displayName =
-      typeof authUser.user_metadata?.full_name === 'string'
-        ? authUser.user_metadata.full_name.trim()
-        : null;
+      typeof authUser.name === 'string' ? authUser.name.trim() : null;
 
     const account = await tx.account.create({
       data: {
@@ -62,9 +104,9 @@ export async function ensureAilaIdentity(authUser: SupabaseUser) {
         accountId: account.id,
         authUserId: authUser.id,
         email,
-        emailVerifiedAt: authUser.email_confirmed_at
-          ? new Date(authUser.email_confirmed_at)
-          : null,
+        // Neon Auth exposes verification as a boolean; record when Aila
+        // first saw the verified email.
+        emailVerifiedAt: now,
         name: displayName || null,
       },
     });
@@ -113,14 +155,74 @@ export async function ensureAilaIdentity(authUser: SupabaseUser) {
         resourceType: 'ACCOUNT',
         resourceId: account.id,
         metadata: {
-          source: 'SUPABASE_AUTH_PROVISIONING',
+          source: 'NEON_AUTH_PROVISIONING',
         },
       },
     });
 
     return tx.user.findUniqueOrThrow({
       where: { id: user.id },
-      include: { account: true, memberships: true },
+      include: identityInclude,
+    });
+  });
+}
+
+async function relinkByVerifiedEmail(authUser: NeonAuthUser, email: string) {
+  return getDb().$transaction(async (tx) => {
+    const linked = await tx.user.findUnique({
+      where: { authUserId: authUser.id },
+      include: identityInclude,
+    });
+
+    if (linked) {
+      return linked;
+    }
+
+    const matches = await tx.user.findMany({
+      where: { email: { equals: email, mode: 'insensitive' } },
+      select: { id: true, accountId: true, authUserId: true, emailVerifiedAt: true },
+      take: 2,
+    });
+
+    if (matches.length === 0) {
+      return null;
+    }
+
+    if (matches.length > 1) {
+      // Ambiguous: never guess which account the person owns.
+      throw new AuthIdentityError('ACCOUNT_LINK_CONFLICT');
+    }
+
+    const [match] = matches as [(typeof matches)[number]];
+    const now = new Date();
+
+    await tx.user.update({
+      where: { id: match.id },
+      data: {
+        authUserId: authUser.id,
+        emailVerifiedAt: match.emailVerifiedAt ?? now,
+      },
+    });
+
+    await tx.auditLog.create({
+      data: {
+        accountId: match.accountId,
+        userId: match.id,
+        action: 'UPDATE',
+        severity: 'WARNING',
+        resourceType: 'USER',
+        resourceId: match.id,
+        metadata: {
+          source: 'NEON_AUTH_RELINK',
+          reason: 'VERIFIED_EMAIL_MATCH',
+          previousAuthUserId: match.authUserId,
+        },
+      },
+    });
+
+    return tx.user.findUniqueOrThrow({
+      where: { id: match.id },
+      include: identityInclude,
     });
   });
 }

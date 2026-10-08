@@ -14,11 +14,10 @@
     "@aila/config": "workspace:*",
     "@aila/db": "workspace:*",
     "@aila/ui": "workspace:*",
+    "@aila/validation": "workspace:*",
     "next": "^16.0.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "@supabase/ssr": "^0.7.0",
-    "@supabase/supabase-js": "^2.0.0"
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

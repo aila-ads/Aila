@@ -1,82 +1,98 @@
 'use client';
 
-import { FormEvent, useState } from 'react';
+import { useActionState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { createAuthBrowserClient } from '@aila/auth';
+import { AUTH_MESSAGES } from '@aila/auth';
+import { signInWithEmail, type AuthFormState } from '@aila/auth/actions';
+import { GoogleSignIn } from '../../components/auth/google-sign-in';
+import { VerifyEmailForm } from '../../components/auth/verify-email-form';
 import { safeRedirectPath } from '../../lib/safe-redirect';
+
+const initialState: AuthFormState = { status: 'idle' };
+
+// Fixed messages only; query values are never echoed.
+const QUERY_ERRORS: Record<string, string> = {
+  google: AUTH_MESSAGES.googleFailed,
+  account: AUTH_MESSAGES.accountUnavailable,
+};
 
 export function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   // Only same-site paths are honoured; anything else falls back to /dashboard.
   const redirectTo = safeRedirectPath(searchParams.get('redirect'));
+  const afterReset = searchParams.get('reset') === '1';
+  const queryError = QUERY_ERRORS[searchParams.get('error') ?? ''] ?? null;
 
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  const [state, formAction, pending] = useActionState(signInWithEmail, initialState);
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError(null);
-    setSubmitting(true);
-
-    const supabase = createAuthBrowserClient();
-
-    const { error: signInError } =
-      await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password,
-      });
-
-    if (signInError) {
-      setError(signInError.message);
-      setSubmitting(false);
-      return;
+  useEffect(() => {
+    if (state.status === 'signed_in') {
+      router.replace(redirectTo);
+      router.refresh();
     }
+  }, [state.status, redirectTo, router]);
 
-    router.replace(redirectTo);
-    router.refresh();
+  if (state.status === 'verify') {
+    return (
+      <VerifyEmailForm
+        email={state.email}
+        message={state.message}
+        redirectTo={redirectTo}
+      />
+    );
   }
 
+  const error = state.status === 'error' ? state.message : queryError;
+
   return (
-    <form onSubmit={handleSubmit}>
-      <div>
-        <label htmlFor="email">Email</label>
-        <input
-          id="email"
-          name="email"
-          type="email"
-          autoComplete="email"
-          required
-          value={email}
-          onChange={(event) => setEmail(event.target.value)}
-        />
-      </div>
+    <div>
+      {afterReset ? <p role="status">{AUTH_MESSAGES.resetDone}</p> : null}
 
-      <div>
-        <label htmlFor="password">Password</label>
-        <input
-          id="password"
-          name="password"
-          type="password"
-          autoComplete="current-password"
-          required
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-        />
-      </div>
+      <form action={formAction}>
+        {afterReset ? <input type="hidden" name="afterReset" value="1" /> : null}
 
-      {error ? <p role="alert">{error}</p> : null}
+        <div>
+          <label htmlFor="email">Email</label>
+          <input
+            id="email"
+            name="email"
+            type="email"
+            autoComplete="email"
+            maxLength={254}
+            required
+          />
+        </div>
 
-      <button type="submit" disabled={submitting}>
-        {submitting ? 'Signing in…' : 'Sign in'}
-      </button>
+        <div>
+          <label htmlFor="password">Password</label>
+          <input
+            id="password"
+            name="password"
+            type="password"
+            autoComplete="current-password"
+            maxLength={128}
+            required
+          />
+        </div>
+
+        {error ? <p role="alert">{error}</p> : null}
+
+        <button type="submit" disabled={pending}>
+          {pending ? 'Signing in…' : 'Sign in'}
+        </button>
+
+        <p>
+          <Link href="/forgot-password">Forgot password?</Link>
+        </p>
+      </form>
+
+      <GoogleSignIn redirectTo={redirectTo} />
 
       <p>
         No account? <Link href="/signup">Create one</Link>
       </p>
-    </form>
+    </div>
   );
 }
