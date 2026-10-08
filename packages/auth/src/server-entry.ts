@@ -21,12 +21,24 @@ export {
   canAccessAccount,
   evaluateAccountAccess,
   hasAppRole,
+  evaluateProAccess,
+  evaluateTrial,
   isAccountOwner,
+  TRIAL_DURATION_MS,
   type AccountAccessDecision,
   type AccountAccessDenialReason,
   type AccountContext,
   type IdentityRecord,
+  type ProAccessDecision,
+  type TrialRecord,
+  type TrialState,
 } from './policies';
+export {
+  getTrialState,
+  getTrialSummary,
+  requireProAccess,
+  type TrialSummary,
+} from './trial';
 export {
   clientIpFrom,
   withinRateLimits,

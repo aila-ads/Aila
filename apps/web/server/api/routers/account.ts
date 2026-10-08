@@ -2,6 +2,7 @@ import {
   changePassword,
   getAccountOverview,
   getPasswordStatus,
+  getTrialSummary,
   listSessions,
   revokeSession,
   updateProfile,
@@ -18,6 +19,8 @@ import { createTRPCRouter, protectedProcedure } from '../trpc';
 /** Account self-service for the signed-in user (AILA-V1-SCOPE §5). */
 export const accountRouter = createTRPCRouter({
   me: protectedProcedure.query(({ ctx }) => getAccountOverview(ctx.auth)),
+
+  trial: protectedProcedure.query(({ ctx }) => getTrialSummary(ctx.auth, ctx.requestId)),
 
   updateProfile: protectedProcedure
     .input(updateProfileSchema)

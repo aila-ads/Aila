@@ -6,6 +6,7 @@ import { PreferencesForm } from '../../components/account/preferences-form';
 import { ProfileForm } from '../../components/account/profile-form';
 import { SessionList, type SessionItem } from '../../components/account/session-list';
 import { SignOutButton } from '../../components/account/sign-out-button';
+import { TrialStatus } from '../../components/account/trial-status';
 import { loadPageData } from '../../server/api/caller';
 
 export const dynamic = 'force-dynamic';
@@ -25,12 +26,13 @@ function timeZoneOptions(current: string): string[] {
 
 export default async function SettingsPage() {
   const result = await loadPageData('/settings', async (api) => {
-    const [overview, sessions, password] = await Promise.all([
+    const [overview, sessions, password, trial] = await Promise.all([
       api.account.me(),
       api.account.sessions.list(),
       api.account.password.status(),
+      api.account.trial(),
     ]);
-    return { overview, sessions, password };
+    return { overview, sessions, password, trial };
   });
 
   if ('error' in result) {
@@ -43,7 +45,7 @@ export default async function SettingsPage() {
     );
   }
 
-  const { overview, sessions, password } = result.data;
+  const { overview, sessions, password, trial } = result.data;
   const { locale, timezone } = overview.settings;
   const formatDate = new Intl.DateTimeFormat(locale, {
     dateStyle: 'medium',
@@ -68,6 +70,11 @@ export default async function SettingsPage() {
       <section aria-labelledby="profile-heading">
         <h2 id="profile-heading">Profile</h2>
         <ProfileForm displayName={overview.user.displayName ?? ''} email={overview.user.email} />
+      </section>
+
+      <section aria-labelledby="trial-heading">
+        <h2 id="trial-heading">Free trial</h2>
+        <TrialStatus trial={trial} />
       </section>
 
       <section aria-labelledby="preferences-heading">

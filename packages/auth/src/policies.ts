@@ -1,4 +1,4 @@
-import type { AccountStatus, MembershipRole, UserRole } from '@aila/db';
+import type { AccountStatus, MembershipRole, TrialStatus, UserRole } from '@aila/db';
 import { AppError } from '@aila/validation';
 
 /**
@@ -110,4 +110,82 @@ export function authorize(
   if (allowed !== true) {
     throw new AppError(denial);
   }
+}
+
+/** The free trial lasts exactly three hours (PLATFORM-FOUNDATION §9, DATA-ARCHITECTURE §9). */
+export const TRIAL_DURATION_MS = 3 * 60 * 60 * 1000;
+
+export type TrialRecord = {
+  readonly status: TrialStatus;
+  readonly startedAt: Date;
+  readonly expiresAt: Date;
+  readonly endedAt: Date | null;
+};
+
+export type TrialState = {
+  /** NONE when the account has no trial. */
+  readonly status: TrialStatus | 'NONE';
+  readonly active: boolean;
+  readonly startedAt: Date | null;
+  readonly expiresAt: Date | null;
+  readonly endedAt: Date | null;
+  readonly remainingMs: number;
+};
+
+/**
+ * The trial's effective state at the server time `now`. A trial is active
+ * only while its status is ACTIVE and `now < expiresAt`; an ACTIVE row past
+ * its expiry is reported as EXPIRED (SECURITY-ARCHITECTURE §9,
+ * DATABASE-SCHEMA §10).
+ */
+export function evaluateTrial(trial: TrialRecord | null, now: Date): TrialState {
+  if (!trial) {
+    return {
+      status: 'NONE',
+      active: false,
+      startedAt: null,
+      expiresAt: null,
+      endedAt: null,
+      remainingMs: 0,
+    };
+  }
+
+  const active = trial.status === 'ACTIVE' && now.getTime() < trial.expiresAt.getTime();
+  const status = trial.status === 'ACTIVE' && !active ? 'EXPIRED' : trial.status;
+
+  return {
+    status,
+    active,
+    startedAt: trial.startedAt,
+    expiresAt: trial.expiresAt,
+    endedAt: trial.endedAt ?? (status === 'EXPIRED' ? trial.expiresAt : null),
+    remainingMs: active ? trial.expiresAt.getTime() - now.getTime() : 0,
+  };
+}
+
+export type ProAccessDecision =
+  | { readonly allowed: true; readonly source: 'TRIAL' | 'SUBSCRIPTION' }
+  | { readonly allowed: false; readonly reason: 'TRIAL_EXPIRED' | 'SUBSCRIPTION_REQUIRED' };
+
+/**
+ * Pro features are allowed during an active trial or with an active Aila
+ * Pro subscription. An ended trial never grants access again
+ * (PLATFORM-FOUNDATION §11, PRODUCT-SPEC §7.4).
+ */
+export function evaluateProAccess(
+  trial: TrialState,
+  hasActiveSubscription: boolean,
+): ProAccessDecision {
+  if (trial.active) {
+    return { allowed: true, source: 'TRIAL' };
+  }
+
+  if (hasActiveSubscription) {
+    return { allowed: true, source: 'SUBSCRIPTION' };
+  }
+
+  return {
+    allowed: false,
+    reason: trial.status === 'NONE' ? 'SUBSCRIPTION_REQUIRED' : 'TRIAL_EXPIRED',
+  };
 }
