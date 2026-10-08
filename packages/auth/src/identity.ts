@@ -1,6 +1,6 @@
 import { getDb } from '@aila/db';
-
-const TRIAL_DURATION_MS = 3 * 60 * 60 * 1000;
+import { auditLogData } from './audit';
+import { TRIAL_DURATION_MS } from './policies';
 
 const PRODUCT_ENTITLEMENTS = [
   'INTELLIGENCE',
@@ -126,7 +126,7 @@ export async function ensureAilaIdentity(authUser: NeonAuthUser) {
       },
     });
 
-    await tx.trial.create({
+    const trial = await tx.trial.create({
       data: {
         accountId: account.id,
         startedAt: now,
@@ -158,6 +158,18 @@ export async function ensureAilaIdentity(authUser: NeonAuthUser) {
           source: 'NEON_AUTH_PROVISIONING',
         },
       },
+    });
+
+    await tx.auditLog.create({
+      data: auditLogData({
+        action: 'CREATE',
+        result: 'SUCCESS',
+        accountId: account.id,
+        userId: user.id,
+        resourceType: 'TRIAL',
+        resourceId: trial.id,
+        metadata: { event: 'TRIAL_STARTED', expiresAt: trialExpiresAt.toISOString() },
+      }),
     });
 
     return tx.user.findUniqueOrThrow({

@@ -6,5 +6,6 @@ export type {
   AuditSeverity,
   MembershipRole,
   Prisma,
+  TrialStatus,
   UserRole,
 } from '@prisma/client';
