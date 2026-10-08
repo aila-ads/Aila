@@ -1,0 +1,5 @@
+/* Shared Aila design tokens and Tailwind setup live in @aila/ui. */
+@import "@aila/ui/globals.css";
+
+/* Scan the web app's own files for Tailwind classes. */
+@source "../";
