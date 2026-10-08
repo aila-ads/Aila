@@ -10,7 +10,8 @@ export default async function SignupPage() {
   }
 
   return (
-    <main>
+    <main className="auth-page">
+      <p className="wordmark">Aila</p>
       <h1>Create your Aila account</h1>
       <p>Your account starts with a 3-hour Aila trial.</p>
       <SignupForm />

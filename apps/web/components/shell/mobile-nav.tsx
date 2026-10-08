@@ -18,7 +18,7 @@ export function MobileNav() {
         </Button>
       </SheetTrigger>
       <SheetContent aria-describedby={undefined}>
-        <SheetTitle className="flex min-h-11 items-center px-3 text-lg">Aila</SheetTitle>
+        <SheetTitle className="flex min-h-11 items-center px-3 font-serif text-2xl tracking-[0.04em] text-primary">Aila</SheetTitle>
         <nav aria-label="Main">
           <NavLinks onNavigate={() => setOpen(false)} />
         </nav>

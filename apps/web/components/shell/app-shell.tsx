@@ -21,7 +21,7 @@ export function AppShell({ user, children }: { user: ShellUser | null; children:
         <MobileNav />
         <Link
           href="/dashboard"
-          className="rounded-md px-1 text-lg font-semibold outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          className="rounded-md px-1 font-serif text-2xl font-semibold tracking-[0.04em] text-primary outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
         >
           Aila
         </Link>

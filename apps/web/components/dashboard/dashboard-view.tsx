@@ -17,8 +17,8 @@ export type DashboardData = {
 export function DashboardView({ name, trial, entitlements }: DashboardData) {
   return (
     <div className="grid gap-8">
-      <section aria-labelledby="welcome-heading" className="grid gap-1">
-        <h1 id="welcome-heading" className="text-2xl font-semibold tracking-tight sm:text-3xl">
+      <section aria-labelledby="welcome-heading" className="grid gap-1 border-b border-brass/60 pb-6">
+        <h1 id="welcome-heading" className="text-3xl font-semibold sm:text-4xl">
           Welcome, {name}
         </h1>
         <p className="text-muted-foreground">Aila — think, create, and build.</p>
@@ -34,7 +34,7 @@ export function DashboardView({ name, trial, entitlements }: DashboardData) {
       </Card>
 
       <section aria-labelledby="products-heading" className="grid gap-4">
-        <h2 id="products-heading" className="text-lg font-semibold">
+        <h2 id="products-heading" className="font-sans label-caps text-brass-ink">
           Products
         </h2>
         <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -45,7 +45,7 @@ export function DashboardView({ name, trial, entitlements }: DashboardData) {
               <li key={product.key} className="flex">
                 <Card className="w-full gap-4">
                   <CardHeader>
-                    <h3 className="leading-none font-semibold">{product.name}</h3>
+                    <h3 className="text-xl leading-none font-semibold">{product.name}</h3>
                     <CardDescription>{product.purpose}</CardDescription>
                   </CardHeader>
                   <CardContent className="mt-auto flex flex-wrap gap-2">

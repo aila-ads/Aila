@@ -35,7 +35,7 @@ function Section({ id, title, children }: { id: string; title: string; children:
 export function SettingsView(data: SettingsData) {
   return (
     <div className="grid gap-6">
-      <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Account settings</h1>
+      <h1 className="border-b border-brass/60 pb-6 text-3xl font-semibold sm:text-4xl">Account settings</h1>
 
       <Section id="profile-heading" title="Profile">
         <ProfileForm displayName={data.displayName} email={data.email} />

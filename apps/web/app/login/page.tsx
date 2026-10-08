@@ -11,7 +11,8 @@ export default async function LoginPage() {
   }
 
   return (
-    <main>
+    <main className="auth-page">
+      <p className="wordmark">Aila</p>
       <h1>Sign in to Aila</h1>
       <p>Use your Aila account to continue.</p>
       <Suspense fallback={null}>
