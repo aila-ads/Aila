@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
+import { isAppError } from '@aila/validation';
 import {
+  assertActiveIdentity,
   AuthIdentityError,
   ensureAilaIdentity,
   getAuth,
@@ -13,7 +15,8 @@ export const dynamic = 'force-dynamic';
 /**
  * Landing route after Google sign-in. Neon Auth's proxy middleware has
  * already exchanged the one-time verifier for session cookies; this route
- * links or provisions the Aila identity, audits the sign-in and continues.
+ * links or provisions the Aila identity, refuses suspended or deleted
+ * accounts, audits the sign-in and continues.
  */
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
@@ -34,6 +37,7 @@ export async function GET(request: Request) {
 
   try {
     const identity = await ensureAilaIdentity(authUser);
+    await assertActiveIdentity(identity);
 
     await recordAuthEvent({
       action: 'LOGIN',
@@ -46,6 +50,10 @@ export async function GET(request: Request) {
 
     if (error instanceof AuthIdentityError && error.code === 'EMAIL_NOT_VERIFIED') {
       return NextResponse.redirect(new URL('/verify-email', requestUrl.origin));
+    }
+
+    if (isAppError(error) && error.reason === 'ACCOUNT_RESTRICTED') {
+      return NextResponse.redirect(new URL('/login?error=restricted', requestUrl.origin));
     }
 
     console.error('[auth] Could not resolve Aila identity after Google sign-in', {

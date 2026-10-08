@@ -21,6 +21,9 @@ export async function proxy(request: NextRequest) {
   if (
     PUBLIC_PATHS.has(pathname) ||
     pathname.startsWith('/api/auth/') ||
+    // The API checks the session itself and answers with JSON errors
+    // instead of redirects.
+    pathname.startsWith('/api/trpc/') ||
     pathname.startsWith('/_next/')
   ) {
     return NextResponse.next();

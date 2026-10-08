@@ -15,6 +15,7 @@ const initialState: AuthFormState = { status: 'idle' };
 const QUERY_ERRORS: Record<string, string> = {
   google: AUTH_MESSAGES.googleFailed,
   account: AUTH_MESSAGES.accountUnavailable,
+  restricted: AUTH_MESSAGES.accountRestricted,
 };
 
 export function LoginForm() {

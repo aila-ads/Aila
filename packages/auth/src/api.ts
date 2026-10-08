@@ -2,7 +2,7 @@ import { getAuth } from './server';
 import { AUTH_MESSAGES } from './messages';
 import {
   clientIpFrom,
-  withinAuthRateLimits,
+  withinRateLimits,
   type RateLimitCheck,
 } from './rate-limit';
 
@@ -48,7 +48,7 @@ export async function POST(request: Request, context: RouteContext) {
     checks.push([pathLimit, ip]);
   }
 
-  if (!(await withinAuthRateLimits(checks))) {
+  if (!(await withinRateLimits(checks))) {
     return Response.json(
       { message: AUTH_MESSAGES.rateLimited, code: 'RATE_LIMITED' },
       { status: 429 },

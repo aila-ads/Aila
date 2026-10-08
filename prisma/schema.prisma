@@ -18,8 +18,13 @@ enum AccountStatus {
 
 enum MembershipRole {
   OWNER
-  ADMIN
   MEMBER
+}
+
+// Application role, set only by the backend (DATA-ARCHITECTURE §7).
+enum UserRole {
+  USER
+  ADMIN
 }
 
 enum TrialStatus {
@@ -139,6 +144,12 @@ enum AuditSeverity {
   CRITICAL
 }
 
+enum AuditResult {
+  SUCCESS
+  FAILURE
+  DENIED
+}
+
 // ============================================================
 // ACCOUNT / IDENTITY
 // ============================================================
@@ -182,6 +193,7 @@ model User {
   name            String?
 
   status AccountStatus @default(ACTIVE)
+  role   UserRole      @default(USER)
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -630,6 +642,9 @@ model AuditLog {
   resourceType String?
   resourceId   String?
 
+  result    AuditResult?
+  requestId String?
+
   ipAddress String?
   userAgent String?
 
@@ -645,4 +660,5 @@ model AuditLog {
   @@index([action, createdAt])
   @@index([severity, createdAt])
   @@index([resourceType, resourceId])
+  @@index([requestId])
 }

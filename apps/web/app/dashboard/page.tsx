@@ -1,46 +1,32 @@
-import { redirect } from 'next/navigation';
-import { AuthIdentityError, getAilaIdentity } from '@aila/auth/server';
-import { AUTH_MESSAGES } from '@aila/auth';
-import { signOut } from '@aila/auth/actions';
+import Link from 'next/link';
+import { SignOutButton } from '../../components/account/sign-out-button';
+import { loadPageData } from '../../server/api/caller';
 
 export const dynamic = 'force-dynamic';
 
-function SignOutButton() {
-  return (
-    <form action={signOut}>
-      <button type="submit">Sign out</button>
-    </form>
-  );
-}
-
 export default async function DashboardPage() {
-  let identity;
+  const result = await loadPageData('/dashboard', (api) => api.account.me());
 
-  try {
-    identity = await getAilaIdentity();
-  } catch (error) {
-    if (error instanceof AuthIdentityError && error.code === 'EMAIL_NOT_VERIFIED') {
-      redirect('/verify-email');
-    }
-
+  if ('error' in result) {
     return (
       <main>
         <h1>Welcome to Aila</h1>
-        <p role="alert">{AUTH_MESSAGES.accountUnavailable}</p>
+        <p role="alert">{result.error}</p>
         <SignOutButton />
       </main>
     );
   }
 
-  if (!identity) {
-    redirect('/login?redirect=/dashboard');
-  }
+  const { user } = result.data;
 
   return (
     <main>
       <h1>Welcome to Aila</h1>
-      <p>{identity.name || identity.email}</p>
+      <p>{user.displayName || user.email}</p>
       <p>Your Aila account is ready.</p>
+      <nav aria-label="Account">
+        <Link href="/settings">Account settings</Link>
+      </nav>
       <SignOutButton />
     </main>
   );
