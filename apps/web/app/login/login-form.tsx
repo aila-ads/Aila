@@ -4,11 +4,13 @@ import { FormEvent, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createAuthBrowserClient } from '@aila/auth';
+import { safeRedirectPath } from '../../lib/safe-redirect';
 
 export function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectTo = searchParams.get('redirect') || '/dashboard';
+  // Only same-site paths are honoured; anything else falls back to /dashboard.
+  const redirectTo = safeRedirectPath(searchParams.get('redirect'));
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
