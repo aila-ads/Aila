@@ -1,9 +1,8 @@
 import { createBrowserClient } from "@supabase/ssr";
-import { authEnv } from "./env";
+import { getAuthEnv } from "./env";
 
 export function createAuthBrowserClient() {
-  return createBrowserClient(
-    authEnv.supabaseUrl,
-    authEnv.supabaseAnonKey,
-  );
+  const { supabaseUrl, supabaseAnonKey } = getAuthEnv();
+
+  return createBrowserClient(supabaseUrl, supabaseAnonKey);
 }

@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./session": "./src/session.ts",
     "./server": "./src/server-entry.ts"
   },
   "dependencies": {
