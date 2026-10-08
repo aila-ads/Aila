@@ -169,7 +169,7 @@ A production feature requires:
              ▼                    ▼                    ▼
       ┌──────────────┐    ┌──────────────┐    ┌──────────────┐
       │ PostgreSQL   │    │   Storage    │    │   Qdrant     │
-      │   Supabase   │    │   Supabase   │    │ Vector Search│
+      │   Supabase   │    │     Neon     │    │ Vector Search│
       └──────────────┘    └──────────────┘    └──────────────┘
                                   │
                                   ▼
@@ -570,7 +570,9 @@ Any future arbitrary code execution must use an isolated execution environment.
 
 # 13. Authentication
 
-Authentication is provided by Supabase Auth.
+Authentication is provided by Neon Auth (Managed Better Auth).
+
+`User.authUserId` stores the Neon Auth user ID.
 
 Supported authentication methods include:
 
@@ -826,6 +828,8 @@ Primary database:
 
 **PostgreSQL through Supabase**
 
+Supabase provides the database only. Authentication (§13) and file storage (§23) are provided by Neon.
+
 The database is the authoritative source for transactional application state.
 
 Primary domains include:
@@ -885,7 +889,9 @@ Where collaboration is introduced, access is represented explicitly through memb
 
 # 23. File Storage
 
-Supabase Storage is the initial file storage platform.
+Neon object storage (S3-compatible, branch-scoped) is the initial file storage platform.
+
+Files are stored in the private bucket `storage` under server-generated keys and are accessed only through the server or short-lived signed URLs.
 
 Supported content may include:
 
@@ -1014,7 +1020,7 @@ Sensitive information must be filtered from error reports where possible.
 
 ## Authentication
 
-Supabase Auth.
+Neon Auth (Managed Better Auth).
 
 ## Application security
 
@@ -1107,9 +1113,11 @@ Supporting infrastructure:
 
 ```text
 Supabase
-├── PostgreSQL
-├── Authentication
-└── Storage
+└── PostgreSQL
+
+Neon
+├── Authentication (Neon Auth)
+└── Object Storage
 
 Qdrant
 └── Vector Search
@@ -1176,6 +1184,9 @@ Aila production observability uses:
 ### Supabase
 
 - Database
+
+### Neon
+
 - Authentication
 - Storage
 

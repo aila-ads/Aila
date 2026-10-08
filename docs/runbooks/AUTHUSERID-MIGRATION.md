@@ -1,5 +1,11 @@
 # Runbook: `User.authUserId` migration on databases with existing users
 
+> **Note (Neon Auth):** Authentication is now provided by Neon Auth (Managed Better Auth),
+> so `User.authUserId` holds the Neon Auth user ID. This runbook only repairs the historical
+> migration below on the Supabase PostgreSQL database. Step 2 links rows to Supabase
+> `auth.users` IDs, which are not Neon Auth IDs. Re-linking existing users to Neon Auth is
+> handled by the auth migration work, not by this runbook.
+
 ## The problem
 
 Migration `prisma/migrations/20261003034354_add_supabase_auth_identity` adds

@@ -165,7 +165,7 @@ createdAt
 updatedAt
 ```
 
-`authUserId` must map safely to the external authentication identity.
+`authUserId` must map safely to the external authentication identity (the Neon Auth user ID).
 
 The application must not duplicate passwords or authentication secrets.
 
