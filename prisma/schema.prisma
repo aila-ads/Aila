@@ -144,7 +144,7 @@ enum AuditSeverity {
 // ============================================================
 
 model Account {
-  id     String        @id @default(cuid())
+  id     String        @id @default(uuid(7))
   status AccountStatus @default(ACTIVE)
 
   name         String?
@@ -173,7 +173,7 @@ model Account {
 }
 
 model User {
-  id         String @id @default(cuid())
+  id         String @id @default(uuid(7))
   accountId  String
   authUserId String @unique
 
@@ -205,7 +205,7 @@ model User {
 }
 
 model Membership {
-  id        String @id @default(cuid())
+  id        String @id @default(uuid(7))
   accountId String
   userId    String
 
@@ -227,7 +227,7 @@ model Membership {
 // ============================================================
 
 model Trial {
-  id        String @id @default(cuid())
+  id        String @id @default(uuid(7))
   accountId String @unique
 
   startedAt DateTime
@@ -250,7 +250,7 @@ model Trial {
 // ============================================================
 
 model Subscription {
-  id        String @id @default(cuid())
+  id        String @id @default(uuid(7))
   accountId String
 
   provider               BillingProvider
@@ -279,7 +279,7 @@ model Subscription {
 }
 
 model BillingEvent {
-  id             String  @id @default(cuid())
+  id             String  @id @default(uuid(7))
   accountId      String?
   subscriptionId String?
 
@@ -307,7 +307,7 @@ model BillingEvent {
 // ============================================================
 
 model Entitlement {
-  id        String @id @default(cuid())
+  id        String @id @default(uuid(7))
   accountId String
 
   product ProductCode
@@ -336,7 +336,7 @@ model Entitlement {
 // ============================================================
 
 model UsageRecord {
-  id String @id @default(cuid())
+  id String @id @default(uuid(7))
 
   accountId String
   userId    String?
@@ -380,7 +380,7 @@ model UsageRecord {
 // ============================================================
 
 model Project {
-  id        String @id @default(cuid())
+  id        String @id @default(uuid(7))
   accountId String
 
   name        String
@@ -408,7 +408,7 @@ model Project {
 }
 
 model ProjectMember {
-  id        String @id @default(cuid())
+  id        String @id @default(uuid(7))
   projectId String
   userId    String
 
@@ -425,7 +425,7 @@ model ProjectMember {
 }
 
 model Folder {
-  id        String @id @default(cuid())
+  id        String @id @default(uuid(7))
   projectId String
 
   parentId String?
@@ -449,7 +449,7 @@ model Folder {
 // ============================================================
 
 model File {
-  id String @id @default(cuid())
+  id String @id @default(uuid(7))
 
   accountId String
   userId    String
@@ -489,7 +489,7 @@ model File {
 }
 
 model FileVersion {
-  id     String @id @default(cuid())
+  id     String @id @default(uuid(7))
   fileId String
 
   version    Int
@@ -512,7 +512,7 @@ model FileVersion {
 // ============================================================
 
 model Conversation {
-  id String @id @default(cuid())
+  id String @id @default(uuid(7))
 
   accountId String
   userId    String
@@ -540,7 +540,7 @@ model Conversation {
 }
 
 model Message {
-  id String @id @default(cuid())
+  id String @id @default(uuid(7))
 
   conversationId String
   userId         String?
@@ -573,7 +573,7 @@ model Message {
 // ============================================================
 
 model Notification {
-  id String @id @default(cuid())
+  id String @id @default(uuid(7))
 
   accountId String
   userId    String
@@ -597,7 +597,7 @@ model Notification {
 }
 
 model UserSettings {
-  id String @id @default(cuid())
+  id String @id @default(uuid(7))
 
   accountId String @unique
   userId    String @unique
@@ -619,7 +619,7 @@ model UserSettings {
 // ============================================================
 
 model AuditLog {
-  id String @id @default(cuid())
+  id String @id @default(uuid(7))
 
   accountId String?
   userId    String?
