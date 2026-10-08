@@ -1,131 +1,84 @@
 'use client';
 
-import { FormEvent, useState } from 'react';
+import { useActionState } from 'react';
 import Link from 'next/link';
-import { createAuthBrowserClient } from '@aila/auth';
+import { signUpWithEmail, type AuthFormState } from '@aila/auth/actions';
+import { GoogleSignIn } from '../../components/auth/google-sign-in';
+import { VerifyEmailForm } from '../../components/auth/verify-email-form';
+
+const initialState: AuthFormState = { status: 'idle' };
 
 export function SignupForm() {
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmation, setConfirmation] = useState('');
-  const [message, setMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  const [state, formAction, pending] = useActionState(signUpWithEmail, initialState);
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError(null);
-    setMessage(null);
-
-    if (password.length < 8) {
-      setError('Password must contain at least 8 characters.');
-      return;
-    }
-
-    if (password !== confirmation) {
-      setError('Passwords do not match.');
-      return;
-    }
-
-    setSubmitting(true);
-
-    const supabase = createAuthBrowserClient();
-    const fullName = name.trim();
-
-    const { data, error: signUpError } = await supabase.auth.signUp({
-      email: email.trim(),
-      password,
-      options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
-        // Optional display name; used when the Aila account is provisioned.
-        ...(fullName ? { data: { full_name: fullName } } : {}),
-      },
-    });
-
-    if (signUpError) {
-      setError(signUpError.message);
-      setSubmitting(false);
-      return;
-    }
-
-    if (data.session) {
-      window.location.assign('/dashboard');
-      return;
-    }
-
-    setMessage(
-      'Check your email to confirm your account, then return to Aila.',
-    );
-    setSubmitting(false);
+  if (state.status === 'verify') {
+    return <VerifyEmailForm email={state.email} message={state.message} />;
   }
 
   return (
-    <form onSubmit={handleSubmit}>
-      <div>
-        <label htmlFor="name">Name (optional)</label>
-        <input
-          id="name"
-          name="name"
-          type="text"
-          autoComplete="name"
-          maxLength={100}
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-        />
-      </div>
+    <div>
+      <form action={formAction}>
+        <div>
+          <label htmlFor="name">Name (optional)</label>
+          <input
+            id="name"
+            name="name"
+            type="text"
+            autoComplete="name"
+            maxLength={100}
+          />
+        </div>
 
-      <div>
-        <label htmlFor="email">Email</label>
-        <input
-          id="email"
-          name="email"
-          type="email"
-          autoComplete="email"
-          required
-          value={email}
-          onChange={(event) => setEmail(event.target.value)}
-        />
-      </div>
+        <div>
+          <label htmlFor="email">Email</label>
+          <input
+            id="email"
+            name="email"
+            type="email"
+            autoComplete="email"
+            maxLength={254}
+            required
+          />
+        </div>
 
-      <div>
-        <label htmlFor="password">Password</label>
-        <input
-          id="password"
-          name="password"
-          type="password"
-          autoComplete="new-password"
-          minLength={8}
-          required
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-        />
-      </div>
+        <div>
+          <label htmlFor="password">Password</label>
+          <input
+            id="password"
+            name="password"
+            type="password"
+            autoComplete="new-password"
+            minLength={8}
+            maxLength={128}
+            required
+          />
+        </div>
 
-      <div>
-        <label htmlFor="confirmation">Confirm password</label>
-        <input
-          id="confirmation"
-          name="confirmation"
-          type="password"
-          autoComplete="new-password"
-          minLength={8}
-          required
-          value={confirmation}
-          onChange={(event) => setConfirmation(event.target.value)}
-        />
-      </div>
+        <div>
+          <label htmlFor="confirmation">Confirm password</label>
+          <input
+            id="confirmation"
+            name="confirmation"
+            type="password"
+            autoComplete="new-password"
+            minLength={8}
+            maxLength={128}
+            required
+          />
+        </div>
 
-      {error ? <p role="alert">{error}</p> : null}
-      {message ? <p role="status">{message}</p> : null}
+        {state.status === 'error' ? <p role="alert">{state.message}</p> : null}
 
-      <button type="submit" disabled={submitting}>
-        {submitting ? 'Creating account…' : 'Create account'}
-      </button>
+        <button type="submit" disabled={pending}>
+          {pending ? 'Creating account…' : 'Create account'}
+        </button>
+      </form>
+
+      <GoogleSignIn redirectTo="/dashboard" />
 
       <p>
         Already registered? <Link href="/login">Sign in</Link>
       </p>
-    </form>
+    </div>
   );
 }

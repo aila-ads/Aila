@@ -1,1 +1,1 @@
-export { db, PrismaClient } from './client';
+export { getDb, PrismaClient } from './client';

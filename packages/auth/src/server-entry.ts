@@ -1,7 +1,9 @@
+export { getAuth } from './server';
+export { getAilaIdentity, getSessionUser } from './request';
 export {
-  createAuthServerClient,
-  createAuthServerClientFromCookieStore,
-} from './server';
-export type { AuthCookieAdapter, AuthCookieStore } from './server';
-export { ensureAilaIdentity } from './identity';
-export { getAilaIdentity } from './request';
+  AuthIdentityError,
+  ensureAilaIdentity,
+  type AuthIdentityErrorCode,
+  type NeonAuthUser,
+} from './identity';
+export { recordAuthEvent, type AuthAuditEvent, type AuthMethod } from './audit';

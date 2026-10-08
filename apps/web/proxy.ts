@@ -1,72 +1,33 @@
-import { createAuthServerClient } from '@aila/auth/session';
 import { NextResponse, type NextRequest } from 'next/server';
+import { protectRequest } from '@aila/auth/proxy';
 
+/**
+ * Deny by default (SECURITY-ARCHITECTURE §2.3): every path that is not
+ * listed here requires a valid Neon Auth session. Pages and handlers also
+ * check the session on the server; this proxy is not the only check.
+ */
 const PUBLIC_PATHS = new Set([
   '/',
   '/login',
   '/signup',
-  '/auth/callback',
+  '/verify-email',
+  '/forgot-password',
+  '/reset-password',
 ]);
 
 export async function proxy(request: NextRequest) {
-  let response = NextResponse.next({
-    request,
-  });
+  const { pathname } = request.nextUrl;
 
-  const supabase = createAuthServerClient({
-    getAll() {
-      return request.cookies.getAll();
-    },
-    setAll(cookiesToSet) {
-      for (const { name, value } of cookiesToSet) {
-        request.cookies.set(name, value);
-      }
-
-      response = NextResponse.next({
-        request,
-      });
-
-      for (const { name, value, options } of cookiesToSet) {
-        response.cookies.set(name, value, options);
-      }
-    },
-  });
-
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
-
-  if (authError) {
-    console.error('Supabase session validation failed', {
-      code: authError.code,
-    });
-  }
-
-  const pathname = request.nextUrl.pathname;
-
-  const isPublic =
+  if (
     PUBLIC_PATHS.has(pathname) ||
-    pathname.startsWith('/_next/') ||
-    pathname.startsWith('/api/auth/');
-
-  if (!user && !isPublic) {
-    const url = request.nextUrl.clone();
-    url.pathname = '/login';
-    url.searchParams.set('redirect', pathname);
-
-    return NextResponse.redirect(url);
+    pathname.startsWith('/api/auth/') ||
+    pathname.startsWith('/_next/')
+  ) {
+    return NextResponse.next();
   }
 
-  if (user && (pathname === '/login' || pathname === '/signup')) {
-    const url = request.nextUrl.clone();
-    url.pathname = '/dashboard';
-    url.searchParams.delete('redirect');
-
-    return NextResponse.redirect(url);
-  }
-
-  return response;
+  // Includes /auth/callback, where Neon Auth completes the Google sign-in.
+  return protectRequest(request, '/login');
 }
 
 export const config = {

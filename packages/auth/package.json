@@ -5,12 +5,20 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./session": "./src/session.ts",
+    "./actions": "./src/actions.ts",
+    "./api": "./src/api.ts",
+    "./proxy": "./src/proxy.ts",
     "./server": "./src/server-entry.ts"
   },
   "dependencies": {
-    "@supabase/ssr": "^0.7.0",
-    "@supabase/supabase-js": "^2.0.0",
-    "@aila/db": "workspace:*"
+    "@aila/db": "workspace:*",
+    "@aila/validation": "workspace:*",
+    "@neondatabase/auth": "0.5.0-beta",
+    "@upstash/ratelimit": "2.2.0",
+    "@upstash/redis": "1.39.0"
+  },
+  "peerDependencies": {
+    "next": "^16.0.0",
+    "react": "^19.0.0"
   }
 }
