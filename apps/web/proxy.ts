@@ -1,4 +1,4 @@
-import { createServerClient } from '@supabase/ssr';
+import { createAuthServerClient } from '@aila/auth/session';
 import { NextResponse, type NextRequest } from 'next/server';
 
 const PUBLIC_PATHS = new Set([
@@ -13,37 +13,24 @@ export async function proxy(request: NextRequest) {
     request,
   });
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  if (!supabaseUrl || !supabaseAnonKey) {
-    throw new Error('Supabase authentication environment is not configured');
-  }
-
-  const supabase = createServerClient(
-    supabaseUrl,
-    supabaseAnonKey,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll();
-        },
-        setAll(cookiesToSet) {
-          for (const { name, value, options } of cookiesToSet) {
-            request.cookies.set(name, value);
-          }
-
-          response = NextResponse.next({
-            request,
-          });
-
-          for (const { name, value, options } of cookiesToSet) {
-            response.cookies.set(name, value, options);
-          }
-        },
-      },
+  const supabase = createAuthServerClient({
+    getAll() {
+      return request.cookies.getAll();
     },
-  );
+    setAll(cookiesToSet) {
+      for (const { name, value } of cookiesToSet) {
+        request.cookies.set(name, value);
+      }
+
+      response = NextResponse.next({
+        request,
+      });
+
+      for (const { name, value, options } of cookiesToSet) {
+        response.cookies.set(name, value, options);
+      }
+    },
+  });
 
   const {
     data: { user },

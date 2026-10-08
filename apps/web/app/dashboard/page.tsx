@@ -1,31 +1,18 @@
 import { cookies } from 'next/headers';
-import { createServerClient } from '@supabase/ssr';
-import { ensureAilaIdentity } from '@aila/auth/server';
+import { redirect } from 'next/navigation';
+import {
+  createAuthServerClientFromCookieStore,
+  ensureAilaIdentity,
+} from '@aila/auth/server';
 
 export default async function DashboardPage() {
   const cookieStore = await cookies();
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  if (!supabaseUrl || !supabaseAnonKey) {
-    throw new Error('Supabase authentication environment is not configured');
-  }
-
-  const supabase = createServerClient(
-    supabaseUrl,
-    supabaseAnonKey,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll();
-        },
-        setAll() {
-          // Session refresh is handled by the Next.js proxy.
-        },
-      },
-    },
-  );
+  // Server Components cannot write cookies; session refresh is handled by
+  // the Next.js proxy.
+  const supabase = createAuthServerClientFromCookieStore(cookieStore, {
+    readOnly: true,
+  });
 
   const {
     data: { user },
@@ -33,7 +20,9 @@ export default async function DashboardPage() {
   } = await supabase.auth.getUser();
 
   if (error || !user) {
-    throw new Error('Authenticated session could not be established');
+    // Signed-out (or expired) sessions go back to sign-in instead of
+    // crashing the page.
+    redirect('/login?redirect=/dashboard');
   }
 
   const identity = await ensureAilaIdentity(user);

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { createServerClient } from '@supabase/ssr';
+import { createAuthServerClientFromCookieStore } from '@aila/auth/session';
 
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
@@ -12,29 +12,7 @@ export async function GET(request: Request) {
 
   const cookieStore = await cookies();
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  if (!supabaseUrl || !supabaseAnonKey) {
-    throw new Error('Supabase authentication environment is not configured');
-  }
-
-  const supabase = createServerClient(
-    supabaseUrl,
-    supabaseAnonKey,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll();
-        },
-        setAll(cookiesToSet) {
-          for (const { name, value, options } of cookiesToSet) {
-            cookieStore.set(name, value, options);
-          }
-        },
-      },
-    },
-  );
+  const supabase = createAuthServerClientFromCookieStore(cookieStore);
 
   const { error } = await supabase.auth.exchangeCodeForSession(code);
 
