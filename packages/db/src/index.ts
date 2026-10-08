@@ -4,6 +4,7 @@ export type {
   AuditAction,
   AuditResult,
   AuditSeverity,
+  EntitlementStatus,
   MembershipRole,
   Prisma,
   TrialStatus,

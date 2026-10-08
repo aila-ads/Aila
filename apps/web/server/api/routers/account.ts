@@ -1,6 +1,7 @@
 import {
   changePassword,
   getAccountOverview,
+  getEntitlementSummary,
   getPasswordStatus,
   getTrialSummary,
   listSessions,
@@ -21,6 +22,10 @@ export const accountRouter = createTRPCRouter({
   me: protectedProcedure.query(({ ctx }) => getAccountOverview(ctx.auth)),
 
   trial: protectedProcedure.query(({ ctx }) => getTrialSummary(ctx.auth, ctx.requestId)),
+
+  entitlements: protectedProcedure.query(({ ctx }) =>
+    getEntitlementSummary(ctx.auth, ctx.requestId),
+  ),
 
   updateProfile: protectedProcedure
     .input(updateProfileSchema)

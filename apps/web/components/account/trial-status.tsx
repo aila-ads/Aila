@@ -8,13 +8,24 @@ function timeLeft(ms: number): string {
 }
 
 /** Shows the server-provided trial state; it never decides access itself. */
-export function TrialStatus({ trial }: { trial: TrialSummary }) {
+export function TrialStatus({
+  trial,
+  granted = false,
+}: {
+  trial: TrialSummary;
+  /** Access comes from an admin or system grant (server-resolved). */
+  granted?: boolean;
+}) {
   if (trial.active) {
     return <p>Free trial: {timeLeft(trial.remainingMs)} left.</p>;
   }
 
   if (trial.proAccess) {
     return <p>Aila Pro is active.</p>;
+  }
+
+  if (granted) {
+    return <p>Your account has access to Aila.</p>;
   }
 
   return (

@@ -2,15 +2,6 @@ import { getDb } from '@aila/db';
 import { auditLogData } from './audit';
 import { TRIAL_DURATION_MS } from './policies';
 
-const PRODUCT_ENTITLEMENTS = [
-  'INTELLIGENCE',
-  'WRITER',
-  'TRANSLATE',
-  'ADS',
-  'LEGAL',
-  'CODING',
-] as const;
-
 /**
  * The authenticated Neon Auth user, as returned in the Neon session.
  * `id` is stored as `User.authUserId` (DATA-ARCHITECTURE §4, DATABASE-SCHEMA §7).
@@ -42,7 +33,8 @@ const identityInclude = { account: true, memberships: true } as const;
  *    users created under the previous auth provider. It only ever happens
  *    for an email Neon Auth reports as verified.
  * 3. Otherwise a new Aila account is provisioned (unchanged bootstrap:
- *    account, user, OWNER membership, settings, trial, entitlements).
+ *    account, user, OWNER membership, settings, trial). Entitlements are
+ *    resolved from the trial, so no entitlement rows are created.
  *
  * Unverified emails are never linked or provisioned.
  */
@@ -133,17 +125,6 @@ export async function ensureAilaIdentity(authUser: NeonAuthUser) {
         expiresAt: trialExpiresAt,
         status: 'ACTIVE',
       },
-    });
-
-    await tx.entitlement.createMany({
-      data: PRODUCT_ENTITLEMENTS.map((product) => ({
-        accountId: account.id,
-        product,
-        key: `${product.toLowerCase()}:access`,
-        source: 'TRIAL',
-        effectiveAt: now,
-        expiresAt: trialExpiresAt,
-      })),
     });
 
     await tx.auditLog.create({

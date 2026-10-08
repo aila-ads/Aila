@@ -26,13 +26,14 @@ function timeZoneOptions(current: string): string[] {
 
 export default async function SettingsPage() {
   const result = await loadPageData('/settings', async (api) => {
-    const [overview, sessions, password, trial] = await Promise.all([
+    const [overview, sessions, password, trial, entitlements] = await Promise.all([
       api.account.me(),
       api.account.sessions.list(),
       api.account.password.status(),
       api.account.trial(),
+      api.account.entitlements(),
     ]);
-    return { overview, sessions, password, trial };
+    return { overview, sessions, password, trial, entitlements };
   });
 
   if ('error' in result) {
@@ -45,7 +46,7 @@ export default async function SettingsPage() {
     );
   }
 
-  const { overview, sessions, password, trial } = result.data;
+  const { overview, sessions, password, trial, entitlements } = result.data;
   const { locale, timezone } = overview.settings;
   const formatDate = new Intl.DateTimeFormat(locale, {
     dateStyle: 'medium',
@@ -74,7 +75,7 @@ export default async function SettingsPage() {
 
       <section aria-labelledby="trial-heading">
         <h2 id="trial-heading">Free trial</h2>
-        <TrialStatus trial={trial} />
+        <TrialStatus trial={trial} granted={entitlements.source === 'GRANT'} />
       </section>
 
       <section aria-labelledby="preferences-heading">
