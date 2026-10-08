@@ -1,5 +1,6 @@
 import type { EntitlementSummary, TrialSummary } from '@aila/auth/server';
 import { TrialStatus } from '../account/trial-status';
+import { OrnamentRule } from '../brand/ornament-rule';
 import { Badge } from '../ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { PRODUCTS } from './products';
@@ -17,11 +18,12 @@ export type DashboardData = {
 export function DashboardView({ name, trial, entitlements }: DashboardData) {
   return (
     <div className="grid gap-8">
-      <section aria-labelledby="welcome-heading" className="grid gap-1 border-b border-brass/60 pb-6">
-        <h1 id="welcome-heading" className="text-3xl font-semibold sm:text-4xl">
+      <section aria-labelledby="welcome-heading" className="grid gap-1">
+        <h1 id="welcome-heading" className="text-3xl font-medium tracking-[0.02em] sm:text-4xl">
           Welcome, {name}
         </h1>
         <p className="text-muted-foreground">Aila — think, create, and build.</p>
+        <OrnamentRule className="mt-5" />
       </section>
 
       <Card aria-labelledby="plan-heading" role="region">
@@ -34,16 +36,18 @@ export function DashboardView({ name, trial, entitlements }: DashboardData) {
       </Card>
 
       <section aria-labelledby="products-heading" className="grid gap-4">
-        <h2 id="products-heading" className="font-sans label-caps text-brass-ink">
-          Products
-        </h2>
+        <OrnamentRule>
+          <h2 id="products-heading" className="font-sans label-caps text-brass-ink">
+            Products
+          </h2>
+        </OrnamentRule>
         <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {PRODUCTS.map((product) => {
             const available = entitlements.keys.includes(product.key);
 
             return (
               <li key={product.key} className="flex">
-                <Card className="w-full gap-4">
+                <Card className="w-full gap-4 transition-colors hover:border-brass">
                   <CardHeader>
                     <h3 className="text-xl leading-none font-semibold">{product.name}</h3>
                     <CardDescription>{product.purpose}</CardDescription>

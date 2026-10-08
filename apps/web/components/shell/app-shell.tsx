@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react';
 import Link from 'next/link';
+import { Crest } from '../brand/crest';
+import { Wordmark } from '../brand/wordmark';
 import { AccountMenu, type ShellUser } from './account-menu';
 import { MobileNav } from './mobile-nav';
 import { NavLinks } from './nav-links';
@@ -21,9 +23,10 @@ export function AppShell({ user, children }: { user: ShellUser | null; children:
         <MobileNav />
         <Link
           href="/dashboard"
-          className="rounded-md px-1 font-serif text-2xl font-semibold tracking-[0.04em] text-primary outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          className="flex items-center gap-2.5 rounded-md px-1 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
         >
-          Aila
+          <Crest className="size-9" />
+          <Wordmark className="text-xl" />
         </Link>
         <div className="ml-auto">{user ? <AccountMenu user={user} /> : null}</div>
       </header>
