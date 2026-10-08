@@ -6,15 +6,17 @@ import { getDb } from '@aila/db';
 import {
   emailOnlySchema,
   firstIssueMessage,
+  isAppError,
   resetPasswordSchema,
   signInSchema,
   signUpSchema,
   verifyEmailSchema,
 } from '@aila/validation';
 import { recordAuthEvent, type AuthMethod } from './audit';
+import { assertActiveIdentity } from './context';
 import { AuthIdentityError, ensureAilaIdentity, type NeonAuthUser } from './identity';
 import { AUTH_MESSAGES } from './messages';
-import { clientIpFrom, withinAuthRateLimits } from './rate-limit';
+import { clientIpFrom, withinRateLimits } from './rate-limit';
 import { getSessionUser } from './request';
 import { getAuth } from './server';
 
@@ -84,9 +86,10 @@ function toNeonAuthUser(value: unknown): NeonAuthUser | null {
 }
 
 /**
- * Links or provisions the Aila identity for a freshly signed-in user and
- * audits the sign-in. If the identity cannot be resolved, the new session
- * is ended so no half-signed-in state remains.
+ * Links or provisions the Aila identity for a freshly signed-in user,
+ * refuses suspended or deleted accounts, and audits the sign-in. If the
+ * identity cannot be resolved or is refused, the new session is ended so no
+ * half-signed-in state remains.
  */
 async function completeSignIn(
   authUser: NeonAuthUser,
@@ -94,6 +97,7 @@ async function completeSignIn(
 ): Promise<AuthFormState> {
   try {
     const identity = await ensureAilaIdentity(authUser);
+    await assertActiveIdentity(identity);
 
     await recordAuthEvent({
       action: 'LOGIN',
@@ -114,6 +118,10 @@ async function completeSignIn(
       };
     }
 
+    if (isAppError(error) && error.reason === 'ACCOUNT_RESTRICTED') {
+      return fail(AUTH_MESSAGES.accountRestricted);
+    }
+
     console.error('[auth] Could not resolve Aila identity after sign-in', {
       error: error instanceof AuthIdentityError ? error.code : 'UNEXPECTED',
     });
@@ -123,7 +131,7 @@ async function completeSignIn(
 
 /** Sends a verification code, within the verification email limits. */
 async function sendVerificationCode(email: string, ip: string): Promise<boolean> {
-  const allowed = await withinAuthRateLimits([
+  const allowed = await withinRateLimits([
     ['verificationEmailPerAccount', email],
     ['verificationEmailPerIp', ip],
   ]);
@@ -160,7 +168,7 @@ export async function signInWithEmail(
   const { email, password } = parsed.data;
   const ip = await requestIp();
 
-  const allowed = await withinAuthRateLimits([
+  const allowed = await withinRateLimits([
     ['signInPerIp', ip],
     ['signInPerAccount', email],
   ]);
@@ -228,7 +236,7 @@ export async function signUpWithEmail(
   const { name, email, password } = parsed.data;
   const ip = await requestIp();
 
-  if (!(await withinAuthRateLimits([['signUpPerIp', ip]]))) {
+  if (!(await withinRateLimits([['signUpPerIp', ip]]))) {
     return fail(AUTH_MESSAGES.rateLimited);
   }
 
@@ -282,7 +290,7 @@ export async function verifyEmailCode(
   const { email, otp } = parsed.data;
   const ip = await requestIp();
 
-  const allowed = await withinAuthRateLimits([
+  const allowed = await withinRateLimits([
     ['verifyPerAccount', email],
     ['signInPerIp', ip],
   ]);
@@ -341,7 +349,7 @@ export async function requestPasswordReset(
   const requestHeaders = await headers();
   const ip = clientIpFrom(requestHeaders);
 
-  const allowed = await withinAuthRateLimits([
+  const allowed = await withinRateLimits([
     ['resetRequestPerAccount', email],
     ['resetRequestPerIp', ip],
   ]);
@@ -390,7 +398,7 @@ export async function resetPassword(
 
   const { token, password } = parsed.data;
 
-  if (!(await withinAuthRateLimits([['resetSubmitPerIp', await requestIp()]]))) {
+  if (!(await withinRateLimits([['resetSubmitPerIp', await requestIp()]]))) {
     return fail(AUTH_MESSAGES.rateLimited);
   }
 

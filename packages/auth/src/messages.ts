@@ -17,4 +17,5 @@ export const AUTH_MESSAGES = {
   resetDone: 'Your password was changed. Sign in with your new password.',
   googleFailed: 'Google sign-in did not complete. Please try again.',
   accountUnavailable: 'We could not open your Aila account. Please try again later.',
+  accountRestricted: 'This Aila account cannot be used right now.',
 } as const;
