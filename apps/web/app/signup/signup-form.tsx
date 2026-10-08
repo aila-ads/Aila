@@ -3,6 +3,9 @@
 import { FormEvent, useState } from 'react';
 import Link from 'next/link';
 import { createAuthBrowserClient } from '@aila/auth';
+import { Button } from '@aila/ui/components/button';
+import { Input } from '@aila/ui/components/input';
+import { Label } from '@aila/ui/components/label';
 
 export function SignupForm() {
   const [name, setName] = useState('');
@@ -61,10 +64,10 @@ export function SignupForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit}>
-      <div>
-        <label htmlFor="name">Name (optional)</label>
-        <input
+    <form onSubmit={handleSubmit} className="grid gap-4">
+      <div className="grid gap-2">
+        <Label htmlFor="name">Name (optional)</Label>
+        <Input
           id="name"
           name="name"
           type="text"
@@ -75,9 +78,9 @@ export function SignupForm() {
         />
       </div>
 
-      <div>
-        <label htmlFor="email">Email</label>
-        <input
+      <div className="grid gap-2">
+        <Label htmlFor="email">Email</Label>
+        <Input
           id="email"
           name="email"
           type="email"
@@ -88,9 +91,9 @@ export function SignupForm() {
         />
       </div>
 
-      <div>
-        <label htmlFor="password">Password</label>
-        <input
+      <div className="grid gap-2">
+        <Label htmlFor="password">Password</Label>
+        <Input
           id="password"
           name="password"
           type="password"
@@ -102,9 +105,9 @@ export function SignupForm() {
         />
       </div>
 
-      <div>
-        <label htmlFor="confirmation">Confirm password</label>
-        <input
+      <div className="grid gap-2">
+        <Label htmlFor="confirmation">Confirm password</Label>
+        <Input
           id="confirmation"
           name="confirmation"
           type="password"
@@ -116,15 +119,29 @@ export function SignupForm() {
         />
       </div>
 
-      {error ? <p role="alert">{error}</p> : null}
-      {message ? <p role="status">{message}</p> : null}
+      {error ? (
+        <p role="alert" className="text-sm text-destructive">
+          {error}
+        </p>
+      ) : null}
+      {message ? (
+        <p role="status" className="text-sm text-muted-foreground">
+          {message}
+        </p>
+      ) : null}
 
-      <button type="submit" disabled={submitting}>
+      <Button type="submit" disabled={submitting} className="w-full">
         {submitting ? 'Creating account…' : 'Create account'}
-      </button>
+      </Button>
 
-      <p>
-        Already registered? <Link href="/login">Sign in</Link>
+      <p className="text-center text-sm text-muted-foreground">
+        Already registered?{' '}
+        <Link
+          href="/login"
+          className="font-medium text-foreground underline underline-offset-4"
+        >
+          Sign in
+        </Link>
       </p>
     </form>
   );

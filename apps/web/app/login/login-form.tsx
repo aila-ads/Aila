@@ -4,6 +4,9 @@ import { FormEvent, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createAuthBrowserClient } from '@aila/auth';
+import { Button } from '@aila/ui/components/button';
+import { Input } from '@aila/ui/components/input';
+import { Label } from '@aila/ui/components/label';
 import { safeRedirectPath } from '../../lib/safe-redirect';
 
 export function LoginForm() {
@@ -41,10 +44,10 @@ export function LoginForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit}>
-      <div>
-        <label htmlFor="email">Email</label>
-        <input
+    <form onSubmit={handleSubmit} className="grid gap-4">
+      <div className="grid gap-2">
+        <Label htmlFor="email">Email</Label>
+        <Input
           id="email"
           name="email"
           type="email"
@@ -55,9 +58,9 @@ export function LoginForm() {
         />
       </div>
 
-      <div>
-        <label htmlFor="password">Password</label>
-        <input
+      <div className="grid gap-2">
+        <Label htmlFor="password">Password</Label>
+        <Input
           id="password"
           name="password"
           type="password"
@@ -68,14 +71,24 @@ export function LoginForm() {
         />
       </div>
 
-      {error ? <p role="alert">{error}</p> : null}
+      {error ? (
+        <p role="alert" className="text-sm text-destructive">
+          {error}
+        </p>
+      ) : null}
 
-      <button type="submit" disabled={submitting}>
+      <Button type="submit" disabled={submitting} className="w-full">
         {submitting ? 'Signing in…' : 'Sign in'}
-      </button>
+      </Button>
 
-      <p>
-        No account? <Link href="/signup">Create one</Link>
+      <p className="text-center text-sm text-muted-foreground">
+        No account?{' '}
+        <Link
+          href="/signup"
+          className="font-medium text-foreground underline underline-offset-4"
+        >
+          Create one
+        </Link>
       </p>
     </form>
   );
