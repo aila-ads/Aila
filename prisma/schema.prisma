@@ -89,11 +89,15 @@ enum ProjectRole {
   VIEWER
 }
 
+// File lifecycle (DATABASE-SCHEMA §26): UPLOADING -> READY, or FAILED;
+// DELETED once removed. ACTIVE is kept for existing values but not used.
 enum FileStatus {
   ACTIVE
   PROCESSING
   FAILED
   DELETED
+  UPLOADING
+  READY
 }
 
 enum FileSource {
@@ -473,7 +477,7 @@ model File {
   mimeType  String
   sizeBytes BigInt
 
-  storageKey String
+  storageKey String  @unique
   checksum   String?
 
   source FileSource
@@ -496,7 +500,6 @@ model File {
   @@index([userId])
   @@index([projectId])
   @@index([folderId])
-  @@index([storageKey])
   @@index([createdAt])
 }
 

@@ -41,6 +41,8 @@ export const RATE_LIMITS = {
   // Application API (tRPC): every request per IP, and writes per account.
   apiPerIp: { scope: 'api', limit: 120, window: '1 m' },
   apiMutationPerAccount: { scope: 'api', limit: 30, window: '1 m' },
+  // File uploads per account (AC-182: upload abuse is controlled).
+  fileUploadPerAccount: { scope: 'api', limit: 20, window: '10 m' },
 } as const satisfies Record<string, Policy>;
 
 export type RateLimitName = keyof typeof RATE_LIMITS;
