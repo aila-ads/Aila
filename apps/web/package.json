@@ -7,7 +7,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint ."
   },
   "dependencies": {
     "@aila/auth": "workspace:*",
@@ -15,16 +16,25 @@
     "@aila/db": "workspace:*",
     "@aila/ui": "workspace:*",
     "@aila/validation": "workspace:*",
+    "@tailwindcss/postcss": "4.3.3",
     "@trpc/client": "11.19.0",
     "@trpc/server": "11.19.0",
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
+    "lucide-react": "1.52.0",
     "next": "^16.0.0",
+    "radix-ui": "1.7.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "tailwind-merge": "3.7.0",
+    "tailwindcss": "4.3.3"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "eslint": "9.39.5",
+    "eslint-config-next": "16.3.8",
     "typescript": "^5.0.0"
   }
 }

@@ -4,6 +4,7 @@ import { useState, useTransition, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { firstIssueMessage, updateSettingsSchema } from '@aila/validation';
 import { api, apiErrorMessage } from '../../lib/trpc/client';
+import { Button } from '../ui/button';
 
 type Status = { readonly kind: 'idle' | 'saved' } | { readonly kind: 'error'; readonly message: string };
 
@@ -44,8 +45,8 @@ export function PreferencesForm({ locale, timezone, locales, timeZones }: Props)
   }
 
   return (
-    <form onSubmit={onSubmit} noValidate>
-      <div>
+    <form onSubmit={onSubmit} noValidate className="grid max-w-md gap-4">
+      <div className="grid gap-2">
         <label htmlFor="locale">Language</label>
         <select id="locale" name="locale" defaultValue={locale} required>
           {locales.map((option) => (
@@ -56,7 +57,7 @@ export function PreferencesForm({ locale, timezone, locales, timeZones }: Props)
         </select>
       </div>
 
-      <div>
+      <div className="grid gap-2">
         <label htmlFor="timezone">Time zone</label>
         <select id="timezone" name="timezone" defaultValue={timezone} required>
           {timeZones.map((zone) => (
@@ -67,14 +68,14 @@ export function PreferencesForm({ locale, timezone, locales, timeZones }: Props)
         </select>
       </div>
 
-      <p role="status" aria-live="polite">
+      <p role="status" aria-live="polite" className="text-sm text-muted-foreground empty:hidden">
         {status.kind === 'saved' ? 'Preferences saved.' : null}
       </p>
-      {status.kind === 'error' ? <p role="alert">{status.message}</p> : null}
+      {status.kind === 'error' ? <p role="alert" className="text-sm text-destructive">{status.message}</p> : null}
 
-      <button type="submit" disabled={pending}>
+      <Button type="submit" disabled={pending} className="justify-self-start">
         {pending ? 'Saving…' : 'Save preferences'}
-      </button>
+      </Button>
     </form>
   );
 }

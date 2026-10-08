@@ -4,6 +4,7 @@ import { useState, useTransition, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { changePasswordSchema, firstIssueMessage } from '@aila/validation';
 import { api, apiErrorMessage } from '../../lib/trpc/client';
+import { Button } from '../ui/button';
 
 type Status = { readonly kind: 'idle' | 'saved' } | { readonly kind: 'error'; readonly message: string };
 
@@ -40,8 +41,8 @@ export function ChangePasswordForm() {
   }
 
   return (
-    <form onSubmit={onSubmit} noValidate>
-      <div>
+    <form onSubmit={onSubmit} noValidate className="grid max-w-md gap-4">
+      <div className="grid gap-2">
         <label htmlFor="currentPassword">Current password</label>
         <input
           id="currentPassword"
@@ -53,7 +54,7 @@ export function ChangePasswordForm() {
         />
       </div>
 
-      <div>
+      <div className="grid gap-2">
         <label htmlFor="newPassword">New password</label>
         <input
           id="newPassword"
@@ -65,10 +66,10 @@ export function ChangePasswordForm() {
           aria-describedby="newPassword-help"
           required
         />
-        <p id="newPassword-help">Use 8 to 128 characters.</p>
+        <p id="newPassword-help" className="text-sm text-muted-foreground">Use 8 to 128 characters.</p>
       </div>
 
-      <div>
+      <div className="grid gap-2">
         <label htmlFor="newPasswordConfirmation">Confirm new password</label>
         <input
           id="newPasswordConfirmation"
@@ -81,16 +82,16 @@ export function ChangePasswordForm() {
         />
       </div>
 
-      <p role="status" aria-live="polite">
+      <p role="status" aria-live="polite" className="text-sm text-muted-foreground empty:hidden">
         {status.kind === 'saved'
           ? 'Password changed. Your other devices have been signed out.'
           : null}
       </p>
-      {status.kind === 'error' ? <p role="alert">{status.message}</p> : null}
+      {status.kind === 'error' ? <p role="alert" className="text-sm text-destructive">{status.message}</p> : null}
 
-      <button type="submit" disabled={pending}>
+      <Button type="submit" disabled={pending} className="justify-self-start">
         {pending ? 'Changing…' : 'Change password'}
-      </button>
+      </Button>
     </form>
   );
 }

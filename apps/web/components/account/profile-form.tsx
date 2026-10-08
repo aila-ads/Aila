@@ -4,6 +4,7 @@ import { useState, useTransition, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { firstIssueMessage, updateProfileSchema } from '@aila/validation';
 import { api, apiErrorMessage } from '../../lib/trpc/client';
+import { Button } from '../ui/button';
 
 type Status = { readonly kind: 'idle' | 'saved' } | { readonly kind: 'error'; readonly message: string };
 
@@ -35,8 +36,8 @@ export function ProfileForm({ displayName, email }: { displayName: string; email
   }
 
   return (
-    <form onSubmit={onSubmit} noValidate>
-      <div>
+    <form onSubmit={onSubmit} noValidate className="grid max-w-md gap-4">
+      <div className="grid gap-2">
         <label htmlFor="displayName">Name</label>
         <input
           id="displayName"
@@ -49,20 +50,20 @@ export function ProfileForm({ displayName, email }: { displayName: string; email
         />
       </div>
 
-      <div>
+      <div className="grid gap-2">
         <label htmlFor="email">Email</label>
         <input id="email" type="email" value={email} readOnly aria-describedby="email-help" />
-        <p id="email-help">Your sign-in email cannot be changed here.</p>
+        <p id="email-help" className="text-sm text-muted-foreground">Your sign-in email cannot be changed here.</p>
       </div>
 
-      <p role="status" aria-live="polite">
+      <p role="status" aria-live="polite" className="text-sm text-muted-foreground empty:hidden">
         {status.kind === 'saved' ? 'Name saved.' : null}
       </p>
-      {status.kind === 'error' ? <p role="alert">{status.message}</p> : null}
+      {status.kind === 'error' ? <p role="alert" className="text-sm text-destructive">{status.message}</p> : null}
 
-      <button type="submit" disabled={pending}>
+      <Button type="submit" disabled={pending} className="justify-self-start">
         {pending ? 'Saving…' : 'Save name'}
-      </button>
+      </Button>
     </form>
   );
 }
