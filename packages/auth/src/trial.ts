@@ -1,5 +1,4 @@
 import { getDb } from '@aila/db';
-import { AppError } from '@aila/validation';
 import { auditLogData } from './audit';
 import {
   accountScope,
@@ -93,31 +92,14 @@ async function hasActiveSubscription(ctx: AccountContext): Promise<boolean> {
   return subscription !== null;
 }
 
-async function resolveProAccess(
+/** Trial and subscription access, for the entitlement service. */
+export async function resolveProAccess(
   ctx: AccountContext,
   requestId?: string,
 ): Promise<{ readonly trial: TrialState; readonly access: ProAccessDecision }> {
   const trial = await getTrialState(ctx, requestId);
   const access = evaluateProAccess(trial, trial.active ? false : await hasActiveSubscription(ctx));
   return { trial, access };
-}
-
-/**
- * Guard for Pro features: allows an active trial or an active Aila Pro
- * subscription, otherwise throws TRIAL_EXPIRED or SUBSCRIPTION_REQUIRED
- * (PLATFORM-FOUNDATION §36, PRODUCT-SPEC §7.4).
- */
-export async function requireProAccess(
-  ctx: AccountContext,
-  requestId?: string,
-): Promise<'TRIAL' | 'SUBSCRIPTION'> {
-  const { access } = await resolveProAccess(ctx, requestId);
-
-  if (!access.allowed) {
-    throw new AppError(access.reason);
-  }
-
-  return access.source;
 }
 
 export type TrialSummary = {

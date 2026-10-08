@@ -1,4 +1,10 @@
-import type { AccountStatus, MembershipRole, TrialStatus, UserRole } from '@aila/db';
+import type {
+  AccountStatus,
+  EntitlementStatus,
+  MembershipRole,
+  TrialStatus,
+  UserRole,
+} from '@aila/db';
 import { AppError } from '@aila/validation';
 
 /**
@@ -188,4 +194,89 @@ export function evaluateProAccess(
     allowed: false,
     reason: trial.status === 'NONE' ? 'SUBSCRIPTION_REQUIRED' : 'TRIAL_EXPIRED',
   };
+}
+
+/**
+ * Entitlement keys (PLATFORM-FOUNDATION §16, DATABASE-SCHEMA §16). The first
+ * six are the products.
+ */
+export const ENTITLEMENT_KEYS = [
+  'intelligence',
+  'writer',
+  'translate',
+  'ads',
+  'legal',
+  'coding',
+  'file_upload',
+  'projects',
+  'advanced_models',
+] as const;
+
+export type EntitlementKey = (typeof ENTITLEMENT_KEYS)[number];
+
+export const PRODUCT_ENTITLEMENT_KEYS = ENTITLEMENT_KEYS.slice(0, 6);
+
+/**
+ * Stored grants that add entitlements on top of the trial and subscription
+ * (DATABASE-SCHEMA §17). Rows with any other source, such as the earlier
+ * TRIAL rows, are never used: the Trial table alone decides trial access.
+ */
+export const ENTITLEMENT_GRANT_SOURCES = ['ADMIN', 'SYSTEM'] as const;
+
+export type EntitlementGrant = {
+  readonly key: string;
+  readonly status: EntitlementStatus;
+  readonly source: string;
+  readonly effectiveAt: Date;
+  readonly expiresAt: Date | null;
+};
+
+function isEntitlementKey(key: string): key is EntitlementKey {
+  return (ENTITLEMENT_KEYS as readonly string[]).includes(key);
+}
+
+/** Whether a stored grant applies at `now`. */
+export function grantApplies(grant: EntitlementGrant, now: Date): boolean {
+  return (
+    grant.status === 'ACTIVE' &&
+    (ENTITLEMENT_GRANT_SOURCES as readonly string[]).includes(grant.source) &&
+    isEntitlementKey(grant.key) &&
+    grant.effectiveAt.getTime() <= now.getTime() &&
+    (grant.expiresAt === null || now.getTime() < grant.expiresAt.getTime())
+  );
+}
+
+/**
+ * The account's effective entitlements (PLATFORM-FOUNDATION §17): an active
+ * trial or Aila Pro subscription grants every key (AILA-V1-ARCHITECTURE §16,
+ * PRODUCT-SPEC §5); applicable ADMIN or SYSTEM grants add their own keys.
+ */
+export function resolveEntitlementKeys(
+  proAccess: ProAccessDecision,
+  grants: readonly EntitlementGrant[],
+  now: Date,
+): EntitlementKey[] {
+  if (proAccess.allowed) {
+    return [...ENTITLEMENT_KEYS];
+  }
+
+  const granted = new Set(grants.filter((grant) => grantApplies(grant, now)).map((g) => g.key));
+  return ENTITLEMENT_KEYS.filter((key) => granted.has(key));
+}
+
+/**
+ * Why a key is missing: TRIAL_EXPIRED or SUBSCRIPTION_REQUIRED when there is
+ * no trial or subscription access, ENTITLEMENT_REQUIRED otherwise. Null when
+ * the key is available.
+ */
+export function entitlementDenial(
+  key: EntitlementKey,
+  keys: readonly EntitlementKey[],
+  proAccess: ProAccessDecision,
+): 'TRIAL_EXPIRED' | 'SUBSCRIPTION_REQUIRED' | 'ENTITLEMENT_REQUIRED' | null {
+  if (keys.includes(key)) {
+    return null;
+  }
+
+  return proAccess.allowed ? 'ENTITLEMENT_REQUIRED' : proAccess.reason;
 }
