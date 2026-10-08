@@ -1,30 +1,66 @@
 @import 'tailwindcss';
 
-/* shadcn/ui neutral theme (AILA-V1-ARCHITECTURE §4.1). Brand colours can
-   replace these variables later without touching components. */
+/* Aila "old money" theme: ivory paper, deep forest green, ink, muted brass
+   and burgundy (errors only). Components read these shadcn/ui variables,
+   so the palette lives here alone. Text pairs meet WCAG AA. */
 :root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  color-scheme: light;
+  --radius: 0;
+  --background: #f5f0e6;
+  --foreground: #1b1b1b;
+  --card: #fbf8f1;
+  --card-foreground: #1b1b1b;
+  --popover: #fbf8f1;
+  --popover-foreground: #1b1b1b;
+  --primary: #1a3324;
+  --primary-foreground: #f5f0e6;
+  --secondary: #eae3d3;
+  --secondary-foreground: #1a3324;
+  --muted: #ece5d6;
+  --muted-foreground: #5c5446;
+  --accent: #e9e0cc;
+  --accent-foreground: #1a3324;
+  --destructive: #6b1e2a;
+  --border: #cdbb98;
+  --input: #94754a;
+  --ring: #a8865a;
+  /* Brass for rules and ornaments; brass-ink is the AA-safe text shade. */
+  --brass: #a8865a;
+  --brass-ink: #7a5e36;
+  /* Faint paper grain (inline SVG noise, no files or network). */
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.33 0 0 0 0 0.27 0 0 0 0 0.18 0 0 0 0.6 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)' opacity='0.16'/%3E%3C/svg%3E");
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --background: #13241c;
+    --foreground: #f5f0e6;
+    --card: #1a2f25;
+    --card-foreground: #f5f0e6;
+    --popover: #1a2f25;
+    --popover-foreground: #f5f0e6;
+    --primary: #f5f0e6;
+    --primary-foreground: #13241c;
+    --secondary: #20382c;
+    --secondary-foreground: #f5f0e6;
+    --muted: #20382c;
+    --muted-foreground: #c9bea6;
+    --accent: #26402f;
+    --accent-foreground: #f5f0e6;
+    --destructive: #e59aa4;
+    --border: #5a4e36;
+    --input: #8c7350;
+    --ring: #a8865a;
+    --brass: #a8865a;
+    --brass-ink: #c9a877;
+    --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.96 0 0 0 0 0.94 0 0 0 0 0.9 0 0 0 0.6 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)' opacity='0.05'/%3E%3C/svg%3E");
+  }
 }
 
 @theme inline {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-cormorant), ui-serif, Georgia, serif;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -43,10 +79,21 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
+  --color-brass: var(--brass);
+  --color-brass-ink: var(--brass-ink);
+  --radius-sm: max(0px, calc(var(--radius) - 4px));
+  --radius-md: max(0px, calc(var(--radius) - 2px));
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+}
+
+/* Small-caps label in the style of a private bank statement. */
+@utility label-caps {
+  font-size: 0.6875rem;
+  line-height: 1rem;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
 }
 
 @layer base {
@@ -55,13 +102,25 @@
   }
 
   body {
-    @apply bg-background text-foreground antialiased;
+    @apply bg-background font-sans text-foreground antialiased;
+    background-image: var(--grain);
+  }
+
+  h1,
+  h2,
+  h3,
+  [data-slot='card-title'] {
+    @apply font-serif font-semibold tracking-[0.01em];
+  }
+
+  hr {
+    @apply border-0 border-t border-brass/60;
   }
 
   /* Shared form fields, matching the shadcn/ui input style. */
   input:not([type='checkbox']):not([type='radio']),
   select {
-    @apply h-10 w-full min-w-0 rounded-md border border-input bg-background px-3 text-base shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50 md:text-sm;
+    @apply h-10 w-full min-w-0 rounded-md border border-input bg-background px-3 text-base transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50 md:text-sm;
   }
 
   input:read-only {
@@ -69,6 +128,62 @@
   }
 
   label {
-    @apply text-sm font-medium;
+    @apply label-caps text-muted-foreground;
+  }
+}
+
+/* Public account pages (sign in, sign up, password and email steps). Their
+   markup is plain HTML, so the brand styling is scoped here. */
+@layer components {
+  .auth-page {
+    @apply mx-auto grid min-h-dvh w-full max-w-md content-center gap-3 px-6 py-12;
+  }
+
+  .auth-page .brand-lockup {
+    @apply flex flex-col items-center gap-3;
+  }
+
+  .auth-page h1 {
+    @apply text-center text-3xl;
+  }
+
+  .auth-page h1 + p {
+    @apply mb-4 text-center text-sm text-muted-foreground;
+  }
+
+  .auth-page form {
+    @apply grid gap-4 border border-border bg-card p-6;
+  }
+
+  .auth-page form > div {
+    @apply grid gap-2;
+  }
+
+  .auth-page button {
+    @apply inline-flex h-11 w-full items-center justify-center border border-primary bg-primary px-4 font-serif text-base font-semibold tracking-[0.16em] text-primary-foreground uppercase transition-colors outline-none hover:bg-primary/90 focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50;
+  }
+
+  .auth-page button[type='button'] {
+    @apply mt-2 bg-transparent text-primary hover:bg-accent;
+  }
+
+  .auth-page a {
+    @apply text-primary underline decoration-brass underline-offset-4 hover:decoration-2;
+  }
+
+  .auth-page p {
+    @apply text-sm;
+  }
+
+  .auth-page > div > p:last-child {
+    @apply mt-4 text-center text-muted-foreground;
+  }
+
+  .auth-page [role='alert'] {
+    @apply text-destructive;
+  }
+
+  .auth-page [role='status'] {
+    @apply border-l-2 border-brass pl-3 text-muted-foreground;
   }
 }

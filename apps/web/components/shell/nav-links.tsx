@@ -16,7 +16,7 @@ const NAV_ITEMS: readonly NavItem[] = [
 ];
 
 const itemClass =
-  'flex min-h-11 items-center justify-between rounded-md px-3 text-sm font-medium outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50';
+  'flex min-h-11 items-center justify-between label-caps rounded-md px-3 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50';
 
 export function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
@@ -29,7 +29,7 @@ export function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
             <li key={item.label}>
               <span aria-disabled="true" className={cn(itemClass, 'text-muted-foreground')}>
                 {item.label}
-                <span className="text-xs font-normal">Coming soon</span>
+                <span className="font-serif text-sm tracking-normal normal-case">Coming soon</span>
               </span>
             </li>
           );

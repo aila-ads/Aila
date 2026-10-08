@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import type { TrialSummary } from '@aila/auth/server';
+import { OrnamentRule } from '../brand/ornament-rule';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { ChangePasswordForm } from './change-password-form';
 import { PreferencesForm } from './preferences-form';
@@ -35,7 +36,10 @@ function Section({ id, title, children }: { id: string; title: string; children:
 export function SettingsView(data: SettingsData) {
   return (
     <div className="grid gap-6">
-      <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Account settings</h1>
+      <div className="grid gap-5">
+        <h1 className="text-3xl font-medium tracking-[0.02em] sm:text-4xl">Account settings</h1>
+        <OrnamentRule />
+      </div>
 
       <Section id="profile-heading" title="Profile">
         <ProfileForm displayName={data.displayName} email={data.email} />

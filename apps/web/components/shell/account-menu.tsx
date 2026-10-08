@@ -23,10 +23,10 @@ export function AccountMenu({ user }: { user: ShellUser }) {
       <form id="account-sign-out" action={signOut} />
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" className="rounded-full" aria-label="Account menu">
+          <Button variant="ghost" size="icon" aria-label="Account menu">
             <span
               aria-hidden="true"
-              className="flex size-9 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground"
+              className="flex size-9 items-center justify-center bg-primary font-serif text-lg font-semibold text-primary-foreground"
             >
               {label.charAt(0).toUpperCase()}
             </span>
