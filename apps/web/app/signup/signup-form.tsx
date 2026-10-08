@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { createAuthBrowserClient } from '@aila/auth';
 
 export function SignupForm() {
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmation, setConfirmation] = useState('');
@@ -30,12 +31,15 @@ export function SignupForm() {
     setSubmitting(true);
 
     const supabase = createAuthBrowserClient();
+    const fullName = name.trim();
 
     const { data, error: signUpError } = await supabase.auth.signUp({
       email: email.trim(),
       password,
       options: {
         emailRedirectTo: `${window.location.origin}/auth/callback`,
+        // Optional display name; used when the Aila account is provisioned.
+        ...(fullName ? { data: { full_name: fullName } } : {}),
       },
     });
 
@@ -58,6 +62,19 @@ export function SignupForm() {
 
   return (
     <form onSubmit={handleSubmit}>
+      <div>
+        <label htmlFor="name">Name (optional)</label>
+        <input
+          id="name"
+          name="name"
+          type="text"
+          autoComplete="name"
+          maxLength={100}
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+        />
+      </div>
+
       <div>
         <label htmlFor="email">Email</label>
         <input
