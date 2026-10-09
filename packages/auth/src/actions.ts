@@ -1,7 +1,8 @@
 'use server';
 
-import { headers } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
+import { NextResponse } from 'next/server';
 import { getDb } from '@aila/db';
 import {
   emailOnlySchema,
@@ -47,6 +48,66 @@ function field(formData: FormData, name: string): string | undefined {
 
 async function requestIp(): Promise<string> {
   return clientIpFrom(await headers());
+}
+
+type ProviderResult = { readonly data: unknown; readonly error: ProviderError | null };
+
+/** Request headers Neon Auth records on the session, taken from the browser. */
+const BROWSER_HEADERS = ['user-agent', 'origin', 'referer', 'cookie'] as const;
+
+/**
+ * Sends a request that creates a session through Neon Auth's own proxy
+ * handler instead of its server API. The server API always sends Node's
+ * user agent, so every session was listed as "node"; the handler forwards
+ * the browser's User-Agent. The new session cookies are set on this
+ * response, as the server API does.
+ */
+async function postWithBrowserHeaders(path: string, body: object): Promise<ProviderResult> {
+  const incoming = await headers();
+  const origin = incoming.get('origin');
+
+  if (!origin) {
+    return { data: null, error: { status: 0, code: 'MISSING_ORIGIN' } };
+  }
+
+  const forwarded = new Headers({ 'content-type': 'application/json' });
+
+  for (const name of BROWSER_HEADERS) {
+    const value = incoming.get(name);
+
+    if (value) {
+      forwarded.set(name, value);
+    }
+  }
+
+  const response = await getAuth()
+    .handler()
+    .POST(
+      new Request(new URL(`/api/auth/${path}`, origin), {
+        method: 'POST',
+        headers: forwarded,
+        body: JSON.stringify(body),
+      }),
+      { params: Promise.resolve({ path: path.split('/') }) },
+    );
+
+  const cookieStore = await cookies();
+
+  for (const cookie of new NextResponse(null, { headers: response.headers }).cookies.getAll()) {
+    cookieStore.set(cookie);
+  }
+
+  const result: unknown = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    const code = (result as { code?: unknown } | null)?.code;
+    return {
+      data: null,
+      error: { status: response.status, code: typeof code === 'string' ? code : undefined },
+    };
+  }
+
+  return { data: result, error: null };
 }
 
 /** Provider outages and upstream throttling are not reported as bad input. */
@@ -178,7 +239,7 @@ export async function signInWithEmail(
   }
 
   const auth = getAuth();
-  const { data, error } = await auth.signIn.email({ email, password });
+  const { data, error } = await postWithBrowserHeaders('sign-in/email', { email, password });
 
   if (error) {
     const unavailable = providerUnavailable(error);
@@ -299,7 +360,7 @@ export async function verifyEmailCode(
     return fail(AUTH_MESSAGES.rateLimited);
   }
 
-  const { data, error } = await getAuth().emailOtp.verifyEmail({ email, otp });
+  const { data, error } = await postWithBrowserHeaders('email-otp/verify-email', { email, otp });
 
   if (error) {
     return providerUnavailable(error) ?? fail(AUTH_MESSAGES.invalidCode);

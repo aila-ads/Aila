@@ -42,6 +42,7 @@ export type UploadTicket = {
   readonly fileId: string;
   readonly uploadUrl: string;
   readonly contentType: string;
+  readonly contentDisposition: string;
 };
 
 /** Storage key from generated identifiers only (SECURITY-ARCHITECTURE §15.3). */
@@ -175,8 +176,9 @@ export async function createUpload(
 
   const fileId = randomUUID();
   const key = storageKey(ctx.account.id, fileId);
+  const contentDisposition = attachmentDisposition(input.name);
   const uploadUrl = await storageCall('presign-put', () =>
-    presignPut(key, mimeType, input.sizeBytes, UPLOAD_URL_SECONDS),
+    presignPut(key, mimeType, input.sizeBytes, contentDisposition, UPLOAD_URL_SECONDS),
   );
 
   await getDb().file.create({
@@ -193,7 +195,7 @@ export async function createUpload(
     },
   });
 
-  return { fileId, uploadUrl, contentType: mimeType };
+  return { fileId, uploadUrl, contentType: mimeType, contentDisposition };
 }
 
 /**

@@ -7,6 +7,7 @@ import {
   type UpdateSettingsInput,
 } from '@aila/validation';
 import { auditLogData, recordAuditEvent } from './audit';
+import { deviceLabel } from './device';
 import { accountScope, authorize, type AccountContext } from './policies';
 import { withinRateLimits } from './rate-limit';
 import { getAuth } from './server';
@@ -172,7 +173,7 @@ export async function listSessions(ctx: AccountContext): Promise<AccountSession[
     .map((session) => ({
       id: session.id,
       current: session.id === ctx.session.id,
-      device: session.userAgent ? session.userAgent.slice(0, 200) : null,
+      device: deviceLabel(session.userAgent),
       createdAt: new Date(session.createdAt).toISOString(),
       expiresAt: new Date(session.expiresAt).toISOString(),
     }))

@@ -1,6 +1,7 @@
 // One-time setup: lets https://ailaxx.com upload files straight to the
 // private Neon Object Storage bucket with presigned PUT URLs (step 7).
-// Downloads are normal page navigations, so only PUT is allowed.
+// Downloads are normal page navigations, so only PUT is allowed. Uploads
+// send Content-Disposition so the object always downloads as a file.
 //
 // Run from the repository root with scripts/set-storage-cors.ps1, which asks
 // for the storage key without showing it. The key is read from
@@ -41,7 +42,7 @@ try {
           {
             AllowedOrigins: [ORIGIN],
             AllowedMethods: ['PUT'],
-            AllowedHeaders: ['content-type'],
+            AllowedHeaders: ['content-type', 'content-disposition'],
             MaxAgeSeconds: 3600,
           },
         ],

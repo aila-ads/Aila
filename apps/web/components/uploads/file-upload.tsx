@@ -55,7 +55,10 @@ export function FileUpload({ onUploaded }: { onUploaded?: (fileId: string) => vo
       try {
         response = await fetch(ticket.uploadUrl, {
           method: 'PUT',
-          headers: { 'Content-Type': ticket.contentType },
+          headers: {
+            'Content-Type': ticket.contentType,
+            'Content-Disposition': ticket.contentDisposition,
+          },
           body: file,
         });
       } catch {
