@@ -38,11 +38,16 @@ function storage() {
   return state;
 }
 
-/** A presigned PUT for exactly this type and size. */
+/**
+ * A presigned PUT for exactly this type, size and Content-Disposition. The
+ * disposition is stored with the object because Neon Object Storage ignores
+ * the response-content-disposition override on presigned GETs.
+ */
 export async function presignPut(
   key: string,
   contentType: string,
   contentLength: number,
+  contentDisposition: string,
   expiresIn: number,
 ): Promise<string> {
   const { client, bucket } = storage();
@@ -54,8 +59,12 @@ export async function presignPut(
       Key: key,
       ContentType: contentType,
       ContentLength: contentLength,
+      ContentDisposition: contentDisposition,
     }),
-    { expiresIn, signableHeaders: new Set(['content-type', 'content-length']) },
+    {
+      expiresIn,
+      signableHeaders: new Set(['content-type', 'content-length', 'content-disposition']),
+    },
   );
 }
 
