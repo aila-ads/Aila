@@ -37,6 +37,9 @@ export async function proxy(request: NextRequest) {
     // The API checks the session itself and answers with JSON errors
     // instead of redirects.
     pathname.startsWith('/api/trpc/') ||
+    // Flutterwave calls this without a session; the handler checks the
+    // webhook's secret hash instead.
+    pathname === '/api/webhooks/flutterwave' ||
     pathname.startsWith('/_next/')
   ) {
     response = NextResponse.next({ request: { headers } });

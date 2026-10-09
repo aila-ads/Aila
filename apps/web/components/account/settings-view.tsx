@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import type { TrialSummary } from '@aila/auth/server';
+import { BillingLink } from '../billing/billing-link';
 import { OrnamentRule } from '../brand/ornament-rule';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { ChangePasswordForm } from './change-password-form';
@@ -46,8 +47,11 @@ export function SettingsView(data: SettingsData) {
       </Section>
 
       <Section id="trial-heading" title="Your plan">
-        <div className="text-sm text-muted-foreground">
-          <TrialStatus trial={data.trial} granted={data.granted} />
+        <div className="grid gap-4">
+          <div className="text-sm text-muted-foreground">
+            <TrialStatus trial={data.trial} granted={data.granted} />
+          </div>
+          <BillingLink trial={data.trial} />
         </div>
       </Section>
 

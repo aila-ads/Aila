@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@aila/auth": "workspace:*",
+    "@aila/billing": "workspace:*",
     "@aila/config": "workspace:*",
     "@aila/db": "workspace:*",
     "@aila/storage": "workspace:*",

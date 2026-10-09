@@ -1,0 +1,21 @@
+{
+  "name": "@aila/billing",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@aila/auth": "workspace:*",
+    "@aila/db": "workspace:*",
+    "@aila/validation": "workspace:*",
+    "zod": "4.3.6"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}

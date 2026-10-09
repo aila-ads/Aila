@@ -1,5 +1,6 @@
 import type { EntitlementSummary, TrialSummary } from '@aila/auth/server';
 import { TrialStatus } from '../account/trial-status';
+import { BillingLink } from '../billing/billing-link';
 import { OrnamentRule } from '../brand/ornament-rule';
 import { Badge } from '../ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
@@ -33,6 +34,9 @@ export function DashboardView({ name, trial, entitlements }: DashboardData) {
             <TrialStatus trial={trial} granted={entitlements.source === 'GRANT'} />
           </div>
         </CardHeader>
+        <CardContent>
+          <BillingLink trial={trial} />
+        </CardContent>
       </Card>
 
       <section aria-labelledby="products-heading" className="grid gap-4">

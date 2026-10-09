@@ -52,6 +52,14 @@ enum PlanCode {
   AILA_PRO
 }
 
+// One provider charge (DATA-ARCHITECTURE §14): PENDING while a checkout is
+// open, then SUCCEEDED or FAILED from the provider's verified result.
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+}
+
 enum EntitlementStatus {
   ACTIVE
   SUSPENDED
@@ -188,6 +196,7 @@ model Account {
   settings      UserSettings?
   auditLogs     AuditLog[]
   billingEvents BillingEvent[]
+  payments      Payment[]
   projects      Project[]
 
   @@index([status])
@@ -221,6 +230,7 @@ model User {
   settings        UserSettings?
   auditLogs       AuditLog[]
   usageRecords    UsageRecord[]
+  payments        Payment[]
   files           File[]
 
   @@index([accountId])
@@ -294,6 +304,7 @@ model Subscription {
 
   account       Account        @relation(fields: [accountId], references: [id], onDelete: Cascade)
   billingEvents BillingEvent[]
+  payments      Payment[]
 
   @@unique([provider, providerSubscriptionId])
   @@index([accountId, status])
@@ -313,6 +324,8 @@ model BillingEvent {
   payloadHash String
 
   processedAt DateTime?
+  // Why a verified event was rejected or failed (DATABASE-SCHEMA §15).
+  errorCode   String?
   createdAt   DateTime  @default(now())
 
   account      Account?      @relation(fields: [accountId], references: [id], onDelete: SetNull)
@@ -323,6 +336,45 @@ model BillingEvent {
   @@index([subscriptionId])
   @@index([eventType])
   @@index([createdAt])
+}
+
+// Maps a provider transaction to the account it belongs to and records the
+// amount and currency it must match (SECURITY-ARCHITECTURE §21.1). The
+// unique provider references make each charge count once.
+model Payment {
+  id             String  @id @default(cuid())
+  accountId      String
+  userId         String?
+  subscriptionId String?
+
+  provider              BillingProvider
+  txRef                 String
+  providerTransactionId String?
+
+  plan     PlanCode
+  amount   Decimal       @db.Decimal(20, 2)
+  currency String        @db.VarChar(3)
+  status   PaymentStatus @default(PENDING)
+
+  // Set only on checkouts Aila created: the provider's hosted link, reused
+  // while it is still open. Renewal charges have neither.
+  checkoutUrl       String?
+  checkoutExpiresAt DateTime?
+  paidAt            DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  account      Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  user         User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  subscription Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+
+  @@unique([provider, providerTransactionId])
+  // Not unique: Flutterwave sets the reference of renewal charges, and the
+  // one transaction ID per charge is what makes it count once.
+  @@index([provider, txRef])
+  @@index([accountId, status, createdAt])
+  @@index([subscriptionId])
 }
 
 // ============================================================
