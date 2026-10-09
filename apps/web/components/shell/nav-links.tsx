@@ -14,6 +14,7 @@ const NAV_ITEMS: readonly NavItem[] = [
   { label: 'Projects', href: null },
   { label: 'Files', href: '/files' },
   { label: 'Settings', href: '/settings' },
+  { label: 'Billing', href: '/billing' },
 ];
 
 const itemClass =

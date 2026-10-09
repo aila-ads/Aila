@@ -3,6 +3,7 @@ import type { NextConfig } from 'next';
 const nextConfig: NextConfig = {
   transpilePackages: [
     '@aila/auth',
+    '@aila/billing',
     '@aila/db',
     '@aila/config',
     '@aila/storage',
