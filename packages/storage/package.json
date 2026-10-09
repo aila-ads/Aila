@@ -11,6 +11,8 @@
     "@aila/db": "workspace:*",
     "@aila/validation": "workspace:*",
     "@aws-sdk/client-s3": "3.1147.0",
-    "@aws-sdk/s3-request-presigner": "3.1147.0"
+    "@aws-sdk/s3-request-presigner": "3.1147.0",
+    "mammoth": "1.13.0",
+    "unpdf": "1.8.1"
   }
 }

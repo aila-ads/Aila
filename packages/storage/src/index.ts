@@ -5,9 +5,12 @@ export {
   deleteFile,
   getDownloadUrl,
   listFiles,
-  readTextFiles,
-  TEXT_FILE_TYPES,
+  readContextFiles,
+  CONTEXT_FILE_TYPES,
+  IMAGE_FILE_TYPES,
+  MAX_CONTEXT_IMAGE_BYTES,
+  type ContextFile,
   type FileItem,
-  type FileText,
   type UploadTicket,
 } from './files';
+export { capText, DOCUMENT_TYPES, extractText, normalizeText, type ExtractedText } from './extract';

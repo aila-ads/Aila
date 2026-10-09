@@ -1,10 +1,8 @@
 import { TRPCError } from '@trpc/server';
 import { notFound } from 'next/navigation';
-import { isAppError } from '@aila/validation';
+import { FILE_TYPE_LABELS, isAppError } from '@aila/validation';
 import type { IntelligenceData } from '../../../components/intelligence/intelligence-view';
 import { loadPageData, type PageData } from '../../../server/api/caller';
-
-const TEXT_TYPES: Record<string, string> = { 'text/plain': 'TXT', 'text/csv': 'CSV' };
 
 function isNotFound(error: unknown): boolean {
   const cause = error instanceof TRPCError ? error.cause : error;
@@ -53,7 +51,7 @@ export async function loadIntelligence(
       canSend: entitlements.keys.includes('intelligence'),
       advancedModels: entitlements.keys.includes('advanced_models'),
       files: files.flatMap((file) =>
-        TEXT_TYPES[file.mimeType] ? [{ id: file.id, name: file.name, type: TEXT_TYPES[file.mimeType]! }] : [],
+        FILE_TYPE_LABELS[file.mimeType] ? [{ id: file.id, name: file.name, type: FILE_TYPE_LABELS[file.mimeType]! }] : [],
       ),
       trial,
       granted: entitlements.source === 'GRANT',

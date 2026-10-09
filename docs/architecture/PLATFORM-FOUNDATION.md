@@ -101,14 +101,14 @@ Product code must not recreate these systems.
 
 # 4. Identity Model
 
-Aila uses Supabase Auth as the authentication authority.
+Aila uses Neon Auth (Managed Better Auth) as the authentication authority.
 
 The application database stores Aila-specific identity and account information.
 
 Conceptually:
 
 ```text
-Supabase Auth
+Neon Auth
     ↓
 Authenticated Identity
     ↓
@@ -118,6 +118,8 @@ Aila Account
     ↓
 Profile / Membership / Settings
 ```
+
+`User.authUserId` stores the Neon Auth user ID.
 
 Authentication credentials must remain managed by the authentication system.
 
@@ -564,7 +566,7 @@ Products should not directly implement storage authorization.
 
 # 24. File Storage
 
-Supabase Storage is the initial object storage system.
+Neon object storage (S3-compatible, branch-scoped) is the initial object storage system. Files are stored in the private bucket `storage`.
 
 The application database stores authoritative file metadata.
 
@@ -577,7 +579,7 @@ File metadata
     ↓
 Storage object reference
     ↓
-Supabase Storage
+Neon object storage
 ```
 
 The browser must not receive unrestricted storage access.
@@ -966,11 +968,11 @@ Secrets must be stored through deployment/platform secret management.
 
 Secrets include:
 
-- Database credentials
-- Supabase secrets
+- Database credentials (Supabase PostgreSQL)
+- Neon Auth secrets
 - AI provider keys
 - Flutterwave credentials
-- Storage credentials
+- Storage credentials (Neon object storage)
 - Email credentials
 - Monitoring credentials
 - Encryption keys

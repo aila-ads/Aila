@@ -57,9 +57,9 @@ Aila V1 uses:
 - Node.js 24+
 - pnpm
 - Prisma
-- PostgreSQL
-- Supabase Auth
-- Supabase Storage
+- PostgreSQL (Supabase)
+- Neon Auth (Managed Better Auth)
+- Neon object storage (S3-compatible)
 - tRPC
 - Qdrant
 - Upstash
@@ -479,7 +479,7 @@ Responsibilities:
 - Storage-provider interaction
 - File processing coordination
 
-Products must not directly implement Supabase Storage authorization.
+Products must not directly implement Neon object storage authorization.
 
 ---
 
@@ -784,6 +784,18 @@ Required environment configuration is documented through:
 ```
 
 Real values must exist only in the appropriate environment's secret/configuration system.
+
+Authentication and storage configuration names:
+
+```text
+NEON_AUTH_BASE_URL
+NEON_AUTH_COOKIE_SECRET
+AWS_ENDPOINT_URL_S3
+AWS_ACCESS_KEY_ID
+AWS_SECRET_ACCESS_KEY
+AWS_REGION
+STORAGE_BUCKET
+```
 
 ---
 

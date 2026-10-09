@@ -2,13 +2,8 @@
 
 import { useId, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import {
-  FILE_ACCEPT,
-  FILE_TYPES_LABEL,
-  MAX_FILE_BYTES,
-  resolveFileType,
-} from '@aila/validation';
-import { api, apiErrorMessage } from '../../lib/trpc/client';
+import { FILE_ACCEPT, FILE_TYPES_LABEL } from '@aila/validation';
+import { uploadFile, uploadProblem } from '../../lib/uploads';
 import { Button } from '../ui/button';
 
 type Status =
@@ -16,8 +11,6 @@ type Status =
   | { readonly kind: 'uploading'; readonly name: string }
   | { readonly kind: 'done'; readonly name: string }
   | { readonly kind: 'error'; readonly message: string };
-
-const UPLOAD_FAILED = 'The upload did not finish. Check your connection and try again.';
 
 /**
  * Reusable upload control (APPLICATION-ARCHITECTURE components/uploads).
@@ -31,52 +24,26 @@ export function FileUpload({ onUploaded }: { onUploaded?: (fileId: string) => vo
   const [status, setStatus] = useState<Status>({ kind: 'idle' });
 
   async function upload(file: File) {
-    if (!resolveFileType(file.name, file.type)) {
-      setStatus({ kind: 'error', message: `Upload a ${FILE_TYPES_LABEL} file.` });
-      return;
-    }
+    const problem = uploadProblem(file);
 
-    if (file.size === 0 || file.size > MAX_FILE_BYTES) {
-      setStatus({ kind: 'error', message: file.size === 0 ? 'The file is empty.' : 'Files can be up to 25 MB.' });
+    if (problem) {
+      setStatus({ kind: 'error', message: problem });
       return;
     }
 
     setStatus({ kind: 'uploading', name: file.name });
 
     try {
-      const ticket = await api.files.createUpload.mutate({
-        name: file.name,
-        mimeType: file.type,
-        sizeBytes: file.size,
-      });
+      const result = await uploadFile(file);
 
-      let response: Response;
-
-      try {
-        response = await fetch(ticket.uploadUrl, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': ticket.contentType,
-            'Content-Disposition': ticket.contentDisposition,
-          },
-          body: file,
-        });
-      } catch {
-        setStatus({ kind: 'error', message: UPLOAD_FAILED });
+      if (!result.ok) {
+        setStatus({ kind: 'error', message: result.message });
         return;
       }
 
-      if (!response.ok) {
-        setStatus({ kind: 'error', message: UPLOAD_FAILED });
-        return;
-      }
-
-      await api.files.completeUpload.mutate({ fileId: ticket.fileId });
       setStatus({ kind: 'done', name: file.name });
-      onUploaded?.(ticket.fileId);
+      onUploaded?.(result.fileId);
       router.refresh();
-    } catch (error) {
-      setStatus({ kind: 'error', message: apiErrorMessage(error) });
     } finally {
       if (inputRef.current) {
         inputRef.current.value = '';

@@ -37,6 +37,17 @@ export const FILE_ACCEPT = Object.keys(FILE_TYPES)
   .map((extension) => `.${extension}`)
   .join(',');
 
+/** Short type labels for people, by stored MIME type. */
+export const FILE_TYPE_LABELS: Readonly<Record<string, string>> = {
+  'application/pdf': 'PDF',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'DOCX',
+  'text/plain': 'TXT',
+  'text/csv': 'CSV',
+  'image/png': 'PNG',
+  'image/jpeg': 'JPEG',
+  'image/webp': 'WEBP',
+};
+
 /** Short list of allowed types for people, e.g. in the upload control. */
 export const FILE_TYPES_LABEL = 'PDF, DOCX, TXT, CSV, PNG, JPEG or WEBP';
 
