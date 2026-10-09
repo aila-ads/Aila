@@ -34,7 +34,23 @@ export type VerifiedCharge = {
   readonly providerTransactionId: string;
   /** Aila's reference sent with the checkout. */
   readonly txRef: string;
+  /**
+   * The price Aila asked for, before any provider fees the customer was
+   * made to pay on top (Paystack requested_amount, Flutterwave amount).
+   */
   readonly amount: number | string;
+  /**
+   * What the customer was actually charged, fees included, when the
+   * provider reports it separately. Never less than the price.
+   */
+  readonly chargedAmount?: number | string;
+  /**
+   * Only when the provider did not report the price before fees and
+   * `amount` was derived as charged minus fees: the fees may have been
+   * borne by the merchant instead, so the charged amount itself may also be
+   * the price.
+   */
+  readonly amountIsNetOfFees?: boolean;
   readonly currency: string;
   readonly status: 'SUCCEEDED' | 'FAILED' | 'PENDING';
   readonly paidAt: Date;

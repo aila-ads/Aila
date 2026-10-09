@@ -72,9 +72,48 @@ export type ExpectedCharge = {
   readonly currency: string;
 };
 
+/** Amounts in minor units, logged with an amount mismatch. No customer data. */
+export type AmountDetail = {
+  readonly expectedMinor: number;
+  readonly priceMinor: number;
+  readonly chargedMinor: number | null;
+};
+
 export type ChargeCheck =
   | { readonly outcome: 'SUCCEEDED' | 'FAILED' | 'PENDING' }
-  | { readonly outcome: 'MISMATCH'; readonly reason: 'TX_REF' | 'CURRENCY' | 'AMOUNT' };
+  | { readonly outcome: 'MISMATCH'; readonly reason: 'TX_REF' | 'CURRENCY' }
+  | { readonly outcome: 'MISMATCH'; readonly reason: 'AMOUNT'; readonly detail: AmountDetail };
+
+/**
+ * Whether a paid charge is for exactly the expected price. Providers can
+ * pass their fees on to the customer, so the price before fees (Paystack
+ * requested_amount, Flutterwave amount) is compared exactly, and what the
+ * customer was charged must be at least the price. When the price was only
+ * derived as charged minus fees, the fees may have been the merchant's, so
+ * the charged amount is also accepted as the price.
+ */
+export function checkAmount(
+  charge: {
+    readonly amount: number | string;
+    readonly chargedAmount?: number | string | null;
+    readonly amountIsNetOfFees?: boolean;
+  },
+  expectedAmount: number | string,
+): { readonly ok: true } | { readonly ok: false; readonly detail: AmountDetail } {
+  const expectedMinor = toMinorUnits(expectedAmount);
+  const priceMinor = toMinorUnits(charge.amount);
+  const chargedMinor =
+    charge.chargedAmount === undefined || charge.chargedAmount === null
+      ? null
+      : toMinorUnits(charge.chargedAmount);
+  const charged = chargedMinor ?? priceMinor;
+  const priceMatches =
+    priceMinor === expectedMinor || (charge.amountIsNetOfFees === true && charged === expectedMinor);
+
+  return priceMatches && expectedMinor > 0 && charged >= expectedMinor
+    ? { ok: true }
+    : { ok: false, detail: { expectedMinor, priceMinor, chargedMinor } };
+}
 
 /**
  * Compares a verified Flutterwave transaction with what Aila expects
@@ -91,9 +130,12 @@ export function checkCharge(transaction: FlutterwaveTransaction, expected: Expec
   }
 
   if (transaction.status === 'successful') {
-    return toMinorUnits(transaction.amount) === toMinorUnits(expected.amount)
+    // Flutterwave `amount` is the price; `charged_amount` adds app_fee when
+    // the fee is passed on to the customer.
+    const amount = checkAmount(transaction, expected.amount);
+    return amount.ok
       ? { outcome: 'SUCCEEDED' }
-      : { outcome: 'MISMATCH', reason: 'AMOUNT' };
+      : { outcome: 'MISMATCH', reason: 'AMOUNT', detail: amount.detail };
   }
 
   return { outcome: transaction.status === 'failed' ? 'FAILED' : 'PENDING' };
@@ -290,18 +332,19 @@ export function oneMonthRefusal(
     : null;
 }
 
-export type VerifiedChargeCheck =
-  | { readonly outcome: 'SUCCEEDED' | 'FAILED' | 'PENDING' }
-  | { readonly outcome: 'MISMATCH'; readonly reason: 'TX_REF' | 'CURRENCY' | 'AMOUNT' };
+export type VerifiedChargeCheck = ChargeCheck;
 
 /**
  * Compares a provider-verified charge with the payment Aila created:
- * reference, currency and, once paid, the exact amount in minor units.
+ * reference, currency and, once paid, the exact price in minor units (see
+ * checkAmount for fees passed on to the customer).
  */
 export function checkVerifiedCharge(
   charge: {
     readonly txRef: string;
     readonly amount: number | string;
+    readonly chargedAmount?: number | string | null;
+    readonly amountIsNetOfFees?: boolean;
     readonly currency: string;
     readonly status: 'SUCCEEDED' | 'FAILED' | 'PENDING';
   },
@@ -316,9 +359,10 @@ export function checkVerifiedCharge(
   }
 
   if (charge.status === 'SUCCEEDED') {
-    return toMinorUnits(charge.amount) === toMinorUnits(expected.amount)
+    const amount = checkAmount(charge, expected.amount);
+    return amount.ok
       ? { outcome: 'SUCCEEDED' }
-      : { outcome: 'MISMATCH', reason: 'AMOUNT' };
+      : { outcome: 'MISMATCH', reason: 'AMOUNT', detail: amount.detail };
   }
 
   return { outcome: charge.status };

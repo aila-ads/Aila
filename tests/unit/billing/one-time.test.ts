@@ -495,3 +495,78 @@ describe('billing page options', () => {
     expect(after.prepaidUntil).toBe(addBillingPeriod(PAID_AT).toISOString());
   });
 });
+
+describe('provider fees passed on to the customer', () => {
+  async function paystackCheckout(): Promise<string> {
+    await startCheckout(ctx, 'PAYSTACK', 'req');
+    return lastPayment().txRef as string;
+  }
+
+  it('grants a Paystack charge whose amount includes fees, from the webhook', async () => {
+    const reference = await paystackCheckout();
+    // A bank payment: 5100.00 requested, 177.67 fees paid by the customer.
+    providers.paystack.set(reference, {
+      id: 9201, status: 'success', reference, amount: 527767, requested_amount: 510000, fees: 17767,
+      currency: 'NGN', channel: 'bank',
+    });
+    const event = { event: 'charge.success', data: { id: 9201, reference, amount: 527767, requested_amount: 510000, status: 'success' } };
+
+    expect((await handlePaystackWebhook(paystackWebhook(event))).status).toBe(200);
+    expect(rows('billingEvent')[0].errorCode).toBeNull();
+    expect(rows('subscription')).toHaveLength(1);
+    expect(lastPayment()).toMatchObject({ status: 'SUCCEEDED', providerTransactionId: '9201' });
+    expect(String(lastPayment().amount)).toBe('5100.00');
+  });
+
+  it('falls back to amount - fees without requested_amount, and accepts merchant-borne fees', async () => {
+    const reference = await paystackCheckout();
+    providers.paystack.set(reference, { id: 9202, status: 'success', reference, amount: 527767, fees: 17767, currency: 'NGN' });
+    await expect(confirmCheckout(ctx, { provider: 'PAYSTACK', reference }, 'req')).resolves.toEqual({ outcome: 'ACTIVE' });
+
+    rows('subscription').length = 0;
+    const second = await paystackCheckout();
+    providers.paystack.set(second, { id: 9203, status: 'success', reference: second, amount: 510000, fees: 7650, currency: 'NGN' });
+    await expect(confirmCheckout(ctx, { provider: 'PAYSTACK', reference: second }, 'req')).resolves.toEqual({ outcome: 'ACTIVE' });
+  });
+
+  it('rejects a wrong requested_amount and logs the amounts without secrets', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const reference = await paystackCheckout();
+    providers.paystack.set(reference, { id: 9204, status: 'success', reference, amount: 527767, requested_amount: 500000, fees: 27767, currency: 'NGN' });
+
+    await expect(confirmCheckout(ctx, { provider: 'PAYSTACK', reference }, 'req')).resolves.toEqual({ outcome: 'FAILED' });
+    expect(rows('subscription')).toHaveLength(0);
+    expect(lastPayment().status).toBe('PENDING');
+    expect(errors).toHaveBeenCalledWith('[billing] Transaction rejected', expect.objectContaining({
+      transactionId: '9204', reason: 'MISMATCH_AMOUNT', expectedMinor: 510000, priceMinor: 500000, chargedMinor: 527767,
+    }));
+    expect(JSON.stringify(errors.mock.calls)).not.toContain(PAYSTACK_KEY);
+    errors.mockRestore();
+  });
+
+  it('applies a stuck PENDING payment from the return page after its checkout expired, once', async () => {
+    const reference = await paystackCheckout();
+    // The checkout link expired long ago; the payment itself was verified.
+    lastPayment().checkoutExpiresAt = new Date(Date.now() - 6 * 3_600_000);
+    providers.paystack.set(reference, { id: 9205, status: 'success', reference, amount: 527767, requested_amount: 510000, fees: 17767, currency: 'NGN' });
+
+    await expect(confirmCheckout(ctx, { provider: 'PAYSTACK', reference }, 'req')).resolves.toEqual({ outcome: 'ACTIVE' });
+    await expect(confirmCheckout(ctx, { provider: 'PAYSTACK', reference }, 'req')).resolves.toEqual({ outcome: 'ACTIVE' });
+
+    expect(rows('subscription')).toHaveLength(1);
+    expect(rows('subscription')[0].currentPeriodEnd).toEqual(addBillingPeriod(PAID_AT));
+    expect(rows('trial')[0].status).toBe('CONVERTED');
+  });
+
+  it('compares Flutterwave amount, not charged_amount, and requires charged_amount >= amount', async () => {
+    await buyWithFlutterwave(821, { amount: 5100, charged_amount: 5171.4, app_fee: 71.4 });
+    await expect(confirmCheckout(ctx, { provider: 'FLUTTERWAVE', transactionId: 821 }, 'req')).resolves.toEqual({ outcome: 'ACTIVE' });
+    expect(rows('subscription')).toHaveLength(1);
+
+    await buyWithFlutterwave(822, { amount: 5171.4, charged_amount: 5171.4, app_fee: 71.4 });
+    await handleFlutterwaveWebhook(flwWebhook(822));
+    await buyWithFlutterwave(823, { amount: 5100, charged_amount: 5000 });
+    await handleFlutterwaveWebhook(flwWebhook(823));
+    expect(rows('billingEvent').map((row) => row.errorCode)).toEqual(['MISMATCH_AMOUNT', 'MISMATCH_AMOUNT']);
+  });
+});

@@ -8,7 +8,7 @@ import {
   type AccessRow,
 } from '../../../packages/billing/src/state';
 import { confirmCheckoutSchema, startCheckoutSchema } from '../../../packages/validation/src/billing';
-import { mapPaystackStatus } from '../../../packages/billing/src/paystack';
+import { mapPaystackStatus, paystackAmounts } from '../../../packages/billing/src/paystack';
 import { orderCharge } from '../../../packages/billing/src/paypal';
 
 const now = new Date('2026-10-09T12:00:00.000Z');
@@ -70,6 +70,43 @@ describe('verified charge checks', () => {
     expect(checkVerifiedCharge({ ...charge, amount: '5099.99' }, expected)).toMatchObject({ reason: 'AMOUNT' });
     expect(checkVerifiedCharge({ ...charge, status: 'PENDING' }, expected)).toEqual({ outcome: 'PENDING' });
     expect(checkVerifiedCharge({ ...charge, status: 'FAILED' }, expected)).toEqual({ outcome: 'FAILED' });
+  });
+
+  it('compares the price before fees passed on to the customer', () => {
+    // Paystack: requested_amount 5100.00, the customer paid 5277.67 with fees.
+    expect(checkVerifiedCharge({ ...charge, chargedAmount: '5277.67' }, expected)).toEqual({ outcome: 'SUCCEEDED' });
+    // The charged amount alone is never the price when the price is known.
+    expect(checkVerifiedCharge({ ...charge, amount: '5277.67', chargedAmount: '5277.67' }, expected)).toMatchObject({
+      reason: 'AMOUNT',
+      detail: { expectedMinor: 510000, priceMinor: 527767, chargedMinor: 527767 },
+    });
+    // Charged less than the price: refused even if the price matches.
+    expect(checkVerifiedCharge({ ...charge, chargedAmount: '5000.00' }, expected)).toMatchObject({ reason: 'AMOUNT' });
+    // Price derived as charged minus fees: fees passed on, or borne by the merchant.
+    expect(
+      checkVerifiedCharge({ ...charge, chargedAmount: '5277.67', amountIsNetOfFees: true }, expected),
+    ).toEqual({ outcome: 'SUCCEEDED' });
+    expect(
+      checkVerifiedCharge({ ...charge, amount: '5023.50', chargedAmount: '5100.00', amountIsNetOfFees: true }, expected),
+    ).toEqual({ outcome: 'SUCCEEDED' });
+    expect(
+      checkVerifiedCharge({ ...charge, amount: '5023.50', chargedAmount: '5101.00', amountIsNetOfFees: true }, expected),
+    ).toMatchObject({ reason: 'AMOUNT' });
+  });
+
+  it('derives the Paystack price from requested_amount, then amount - fees, then amount', () => {
+    expect(paystackAmounts({ amount: 517767, requested_amount: 500000, fees: 17767 })).toEqual({
+      priceMinor: 500000,
+      chargedMinor: 517767,
+      netOfFees: false,
+    });
+    expect(paystackAmounts({ amount: 517767, requested_amount: null, fees: 17767 })).toEqual({
+      priceMinor: 500000,
+      chargedMinor: 517767,
+      netOfFees: true,
+    });
+    expect(paystackAmounts({ amount: 500000 })).toEqual({ priceMinor: 500000, chargedMinor: 500000, netOfFees: false });
+    expect(paystackAmounts({ amount: 500000, fees: 0 })).toEqual({ priceMinor: 500000, chargedMinor: 500000, netOfFees: false });
   });
 
   it('maps Paystack statuses', () => {
