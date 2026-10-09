@@ -68,6 +68,12 @@ Identifiers must be generated server-side.
 
 Clients must not choose ownership relationships by submitting arbitrary account IDs.
 
+**Implementation note:**
+- Every model's `id` uses `@default(uuid(7))`. Prisma generates time-ordered UUIDv7 values on the server, at insert time.
+- Columns stay `TEXT` (Prisma `String`), not `@db.Uuid`. Rows created before this change keep their original cuid ids (e.g. `clx…`), and a native `uuid` column could not store them.
+- Changing the default needs no SQL migration, because Prisma applies `uuid()`/`cuid()` defaults in the client, not in the database.
+- Code must treat ids as opaque strings. Validate them as non-empty strings of bounded length, not with UUID- or cuid-specific patterns, because both formats can occur.
+
 ---
 
 # 4. Common Record Fields
