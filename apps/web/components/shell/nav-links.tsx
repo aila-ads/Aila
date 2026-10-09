@@ -12,6 +12,7 @@ const NAV_ITEMS: readonly NavItem[] = [
   { label: 'Dashboard', href: '/dashboard' },
   ...PRODUCTS.map((product) => ({ label: product.name.replace('Aila ', ''), href: product.href })),
   { label: 'Projects', href: null },
+  { label: 'Files', href: '/files' },
   { label: 'Settings', href: '/settings' },
 ];
 

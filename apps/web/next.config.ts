@@ -5,6 +5,7 @@ const nextConfig: NextConfig = {
     '@aila/auth',
     '@aila/db',
     '@aila/config',
+    '@aila/storage',
     '@aila/ui',
     '@aila/validation',
   ],

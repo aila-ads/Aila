@@ -5,3 +5,4 @@
 export * from './auth';
 export * from './account';
 export * from './errors';
+export * from './files';
