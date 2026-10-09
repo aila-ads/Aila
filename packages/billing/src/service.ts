@@ -10,7 +10,15 @@ import {
 } from '@aila/auth/server';
 import { getDb, type Prisma } from '@aila/db';
 import { AppError } from '@aila/validation';
-import { BillingConfigError, getProPlanId } from './env';
+import {
+  BillingConfigError,
+  FLUTTERWAVE_ENV,
+  getProPlanId,
+  getProPriceUsd,
+  isConfigured,
+  PAYPAL_ENV,
+  PAYSTACK_ENV,
+} from './env';
 import {
   cancelProviderSubscription,
   createCheckout,
@@ -21,7 +29,11 @@ import {
   type FlutterwavePlan,
   type FlutterwaveTransaction,
 } from './flutterwave';
+import { capturePaypalOrder, createPaypalOrder, isPaypalUrl } from './paypal';
+import { initializePaystackTransaction, verifyPaystackTransaction } from './paystack';
+import { PaymentProviderError, type VerifiedCharge } from './provider-error';
 import {
+  accessUntil,
   addBillingPeriod,
   canCancel,
   cancellationUpdate,
@@ -29,7 +41,10 @@ import {
   CHECKOUT_SESSION_MINUTES,
   checkCharge,
   checkPlan,
+  checkVerifiedCharge,
   failedChargeMakesPastDue,
+  oneMonthAccess,
+  oneMonthRefusal,
   renewedPeriod,
   subscriptionState,
   toMinorUnits,
@@ -48,6 +63,9 @@ const PROVIDER = 'FLUTTERWAVE';
 const PLAN = 'AILA_PRO';
 const APP_URL = 'https://ailaxx.com';
 const RETURN_PATH = '/billing';
+const RETURN_URL = `${APP_URL}${RETURN_PATH}`;
+/** Where a customer who abandons a checkout lands. */
+const CANCEL_URL = `${RETURN_URL}?checkout=cancelled`;
 /** A stored checkout link is reused only if it stays open at least this long. */
 const CHECKOUT_REUSE_MARGIN_MS = 5 * 60 * 1000;
 
@@ -74,7 +92,9 @@ function dependencyFailure(operation: string, error: unknown, requestId?: string
     operation,
     requestId: requestId ?? null,
     error:
-      error instanceof FlutterwaveError || error instanceof BillingConfigError
+      error instanceof FlutterwaveError ||
+      error instanceof PaymentProviderError ||
+      error instanceof BillingConfigError
         ? error.message
         : error instanceof Error
           ? error.name
@@ -89,10 +109,19 @@ async function requireBillingRateLimit(ctx: AccountContext): Promise<void> {
   }
 }
 
+/** The newest Flutterwave card plan subscription (renewed by Flutterwave). */
 function latestSubscription(accountId: string, db: Prisma.TransactionClient = getDb()) {
   return db.subscription.findFirst({
-    where: { accountId, provider: PROVIDER, plan: PLAN },
+    where: { accountId, provider: PROVIDER, plan: PLAN, providerSubscriptionId: { not: null } },
     orderBy: { createdAt: 'desc' },
+    select: SUBSCRIPTION_SELECT,
+  });
+}
+
+/** Every Aila Pro row that can still give access: card plan and one-month purchases. */
+function accessRows(accountId: string, db: Prisma.TransactionClient = getDb()) {
+  return db.subscription.findMany({
+    where: { accountId, plan: PLAN, status: 'ACTIVE' },
     select: SUBSCRIPTION_SELECT,
   });
 }
@@ -116,6 +145,15 @@ async function loadPlan(): Promise<FlutterwavePlan> {
 
 export type BillingPrice = { readonly amount: string; readonly currency: string };
 
+/**
+ * How the customer pays. FLUTTERWAVE, PAYSTACK and PAYPAL buy one month with
+ * every method the provider offers; FLUTTERWAVE_CARD_PLAN is the monthly card
+ * subscription Flutterwave renews until it is cancelled.
+ */
+export type CheckoutMethod = 'FLUTTERWAVE' | 'PAYSTACK' | 'PAYPAL' | 'FLUTTERWAVE_CARD_PLAN';
+
+export type CheckoutOption = { readonly method: CheckoutMethod; readonly price: BillingPrice };
+
 export type BillingSummary = {
   readonly subscription: {
     readonly state: SubscriptionState;
@@ -124,13 +162,66 @@ export type BillingSummary = {
     /** The last successful charge. */
     readonly lastCharge: BillingPrice | null;
   } | null;
-  /** The current Aila Pro price; null if Flutterwave could not be reached. */
-  readonly price: BillingPrice | null;
-  readonly canSubscribe: boolean;
+  /**
+   * Paid Aila Pro access from one-month purchases (and a cancelled card plan
+   * still running), when no card plan is renewing. Null otherwise.
+   */
+  readonly prepaidUntil: string | null;
+  /** Configured payment methods the owner can use now, with their prices. */
+  readonly options: readonly CheckoutOption[];
+  /** Whether a configured method exists but its price could not be loaded. */
+  readonly optionsUnavailable: boolean;
+  /** One month can be bought (or added to the current access) now. */
+  readonly canBuy: boolean;
+  /** Why buying is refused while Aila Pro is already paid for. */
+  readonly buyRefusal: 'RENEWING_SUBSCRIPTION' | 'PREPAID_LIMIT' | null;
   readonly canCancel: boolean;
   /** Only account owners manage billing. */
   readonly isOwner: boolean;
 };
+
+function toPrice(amount: number | string, currency: string): BillingPrice {
+  return { amount: (toMinorUnits(amount) / 100).toFixed(2), currency };
+}
+
+/** Prices of the configured methods; failures are logged and the method left out. */
+async function loadOptions(
+  includeCardPlan: boolean,
+  requestId?: string,
+): Promise<{ readonly options: CheckoutOption[]; readonly unavailable: boolean }> {
+  const options: CheckoutOption[] = [];
+  let unavailable = false;
+
+  if (isConfigured(...FLUTTERWAVE_ENV)) {
+    try {
+      const plan = await loadPlan();
+      const price = toPrice(plan.amount, plan.currency);
+      options.push({ method: 'FLUTTERWAVE', price });
+
+      if (isConfigured(...PAYSTACK_ENV)) {
+        options.push({ method: 'PAYSTACK', price });
+      }
+
+      if (includeCardPlan) {
+        options.push({ method: 'FLUTTERWAVE_CARD_PLAN', price });
+      }
+    } catch (error) {
+      unavailable = true;
+      dependencyFailure('load plan', error, requestId);
+    }
+  }
+
+  if (isConfigured(...PAYPAL_ENV)) {
+    try {
+      options.push({ method: 'PAYPAL', price: { amount: getProPriceUsd(), currency: 'USD' } });
+    } catch (error) {
+      unavailable = true;
+      dependencyFailure('load PayPal price', error, requestId);
+    }
+  }
+
+  return { options, unavailable };
+}
 
 /** Server-resolved billing state for display (AILA-V1-SCOPE §23). */
 export async function getBillingSummary(
@@ -138,27 +229,25 @@ export async function getBillingSummary(
   requestId?: string,
 ): Promise<BillingSummary> {
   const now = new Date();
-  const subscription = await latestSubscription(ctx.account.id);
-  const lastCharge = subscription
-    ? await getDb().payment.findFirst({
-        where: { ...accountScope(ctx), subscriptionId: subscription.id, status: 'SUCCEEDED' },
-        orderBy: { paidAt: 'desc' },
-        select: { amount: true, currency: true },
-      })
-    : null;
-  const subscribable = canStartCheckout(subscription, now);
-  let price: BillingPrice | null = null;
-
-  if (subscribable) {
-    try {
-      const plan = await loadPlan();
-      price = { amount: (toMinorUnits(plan.amount) / 100).toFixed(2), currency: plan.currency };
-    } catch (error) {
-      dependencyFailure('load plan', error, requestId);
-    }
-  }
-
+  const [subscription, rows] = await Promise.all([
+    latestSubscription(ctx.account.id),
+    accessRows(ctx.account.id),
+  ]);
+  const lastCharge = await getDb().payment.findFirst({
+    where: { ...accountScope(ctx), status: 'SUCCEEDED' },
+    orderBy: { paidAt: 'desc' },
+    select: { amount: true, currency: true },
+  });
   const isOwner = isAccountOwner(ctx);
+  const renewing = canCancel(subscription, now);
+  const until = accessUntil(rows, now);
+  const buyRefusal = oneMonthRefusal(subscription, rows, now);
+  // The card plan can be chosen only when the account has no paid access.
+  const planAllowed = canStartCheckout(subscription, now) && until === null;
+  const { options, unavailable } =
+    isOwner && buyRefusal === null
+      ? await loadOptions(planAllowed, requestId)
+      : { options: [], unavailable: false };
 
   return {
     subscription: subscription
@@ -171,9 +260,12 @@ export async function getBillingSummary(
             : null,
         }
       : null,
-    price,
-    canSubscribe: isOwner && subscribable && price !== null,
-    canCancel: isOwner && canCancel(subscription, now),
+    prepaidUntil: !renewing && until ? until.toISOString() : null,
+    options,
+    optionsUnavailable: unavailable,
+    canBuy: isOwner && buyRefusal === null && options.some((option) => option.method !== 'FLUTTERWAVE_CARD_PLAN'),
+    buyRefusal,
+    canCancel: isOwner && renewing,
     isOwner,
   };
 }
@@ -187,34 +279,80 @@ function isFlutterwaveCheckoutUrl(link: string): boolean {
   return url.protocol === 'https:' && (url.hostname === 'flutterwave.com' || url.hostname.endsWith('.flutterwave.com'));
 }
 
+function isPaystackCheckoutUrl(link: string): boolean {
+  const url = new URL(link);
+  return url.protocol === 'https:' && url.hostname === 'checkout.paystack.com';
+}
+
+const PROVIDER_OF: Record<Exclude<CheckoutMethod, 'FLUTTERWAVE_CARD_PLAN'>, VerifiedCharge['provider']> = {
+  FLUTTERWAVE: 'FLUTTERWAVE',
+  PAYSTACK: 'PAYSTACK',
+  PAYPAL: 'PAYPAL',
+};
+
+const METHOD_ENV: Record<CheckoutMethod, readonly string[]> = {
+  FLUTTERWAVE: FLUTTERWAVE_ENV,
+  FLUTTERWAVE_CARD_PLAN: FLUTTERWAVE_ENV,
+  PAYSTACK: PAYSTACK_ENV,
+  PAYPAL: PAYPAL_ENV,
+};
+
 /**
- * Starts an Aila Pro checkout (AC-160). The amount and currency come from
- * the Flutterwave payment plan, never from the client, and are stored with
- * the generated tx_ref so the payment can be verified against them.
+ * Starts an Aila Pro checkout (AC-160) with the chosen method. The amount
+ * and currency come from the Flutterwave plan or AILA_PRO_PRICE_USD, never
+ * from the client, and are stored with the generated reference so the
+ * payment can be verified against them.
  */
 export async function startCheckout(
   ctx: AccountContext,
+  method: CheckoutMethod,
   requestId?: string,
 ): Promise<{ readonly url: string }> {
   authorize(isAccountOwner(ctx));
   await requireBillingRateLimit(ctx);
 
+  if (!isConfigured(...METHOD_ENV[method])) {
+    throw new AppError('CONFLICT', {
+      reason: 'METHOD_UNAVAILABLE',
+      message: 'This payment method is not available.',
+    });
+  }
+
   const db = getDb();
   const now = new Date();
+  const [subscription, rows] = await Promise.all([
+    latestSubscription(ctx.account.id),
+    accessRows(ctx.account.id),
+  ]);
+  const oneTime = method !== 'FLUTTERWAVE_CARD_PLAN';
 
-  if (!canStartCheckout(await latestSubscription(ctx.account.id), now)) {
+  if (oneTime) {
+    const refusal = oneMonthRefusal(subscription, rows, now);
+
+    if (refusal) {
+      throw new AppError('CONFLICT', {
+        reason: refusal,
+        message:
+          refusal === 'RENEWING_SUBSCRIPTION'
+            ? 'Your Aila Pro card subscription already renews every month.'
+            : 'Aila Pro is already paid for about a year ahead.',
+      });
+    }
+  } else if (!canStartCheckout(subscription, now) || accessUntil(rows, now) !== null) {
     throw new AppError('CONFLICT', {
       reason: 'SUBSCRIPTION_EXISTS',
       message: 'Your account already has Aila Pro.',
     });
   }
 
-  // One open checkout per account, so a second tab cannot start a second
-  // subscription.
+  const provider = oneTime ? PROVIDER_OF[method] : PROVIDER;
+
+  // One open checkout per account and method, so a second tab reuses it.
   const open = await db.payment.findFirst({
     where: {
       ...accountScope(ctx),
-      provider: PROVIDER,
+      provider,
+      oneTime,
       status: 'PENDING',
       checkoutUrl: { not: null },
       checkoutExpiresAt: { gt: new Date(now.getTime() + CHECKOUT_REUSE_MARGIN_MS) },
@@ -227,52 +365,94 @@ export async function startCheckout(
     return { url: open.checkoutUrl };
   }
 
-  let plan: FlutterwavePlan;
+  let price: BillingPrice;
+  let planId: number | undefined;
 
   try {
-    plan = await loadPlan();
+    if (method === 'PAYPAL') {
+      price = { amount: getProPriceUsd(), currency: 'USD' };
+    } else {
+      const plan = await loadPlan();
+      price = toPrice(plan.amount, plan.currency);
+      planId = oneTime ? undefined : plan.id;
+    }
   } catch (error) {
-    throw dependencyFailure('load plan', error, requestId);
+    throw dependencyFailure('load price', error, requestId);
   }
 
-  const amount = (toMinorUnits(plan.amount) / 100).toFixed(2);
   const payment = await db.payment.create({
     data: {
       accountId: ctx.account.id,
       userId: ctx.user.id,
-      provider: PROVIDER,
+      provider,
       txRef: `aila-${randomUUID()}`,
       plan: PLAN,
-      amount,
-      currency: plan.currency,
+      oneTime,
+      amount: price.amount,
+      currency: price.currency,
       checkoutExpiresAt: new Date(now.getTime() + CHECKOUT_SESSION_MINUTES * 60_000),
     },
     select: { id: true, txRef: true },
   });
 
   let url: string;
+  let providerTransactionId: string | undefined;
 
   try {
-    url = await createCheckout({
-      txRef: payment.txRef,
-      amount: Number(amount),
-      currency: plan.currency,
-      planId: plan.id,
-      redirectUrl: `${APP_URL}${RETURN_PATH}`,
-      email: ctx.user.email,
-      name: ctx.user.name,
-      sessionMinutes: CHECKOUT_SESSION_MINUTES,
-    });
+    if (method === 'PAYSTACK') {
+      url = await initializePaystackTransaction({
+        reference: payment.txRef,
+        amountMinor: toMinorUnits(price.amount),
+        currency: price.currency,
+        email: ctx.user.email,
+        callbackUrl: RETURN_URL,
+        cancelUrl: CANCEL_URL,
+      });
 
-    if (!isFlutterwaveCheckoutUrl(url)) {
-      throw new FlutterwaveError('REJECTED', 'create checkout');
+      if (!isPaystackCheckoutUrl(url)) {
+        throw new PaymentProviderError('Paystack', 'REJECTED', 'initialize transaction');
+      }
+    } else if (method === 'PAYPAL') {
+      const order = await createPaypalOrder({
+        txRef: payment.txRef,
+        amount: price.amount,
+        currency: price.currency,
+        returnUrl: RETURN_URL,
+        cancelUrl: CANCEL_URL,
+      });
+
+      if (!isPaypalUrl(order.approveUrl)) {
+        throw new PaymentProviderError('PayPal', 'REJECTED', 'create order');
+      }
+
+      url = order.approveUrl;
+      // The order ID is what PayPal returns the customer and its webhooks with.
+      providerTransactionId = order.orderId;
+    } else {
+      url = await createCheckout({
+        txRef: payment.txRef,
+        amount: Number(price.amount),
+        currency: price.currency,
+        planId,
+        redirectUrl: RETURN_URL,
+        email: ctx.user.email,
+        name: ctx.user.name,
+        sessionMinutes: CHECKOUT_SESSION_MINUTES,
+      });
+
+      if (!isFlutterwaveCheckoutUrl(url)) {
+        throw new FlutterwaveError('REJECTED', 'create checkout');
+      }
     }
   } catch (error) {
     await db.payment.update({ where: { id: payment.id }, data: { status: 'FAILED' } });
     throw dependencyFailure('create checkout', error, requestId);
   }
 
-  await db.payment.update({ where: { id: payment.id }, data: { checkoutUrl: url } });
+  await db.payment.update({
+    where: { id: payment.id },
+    data: { checkoutUrl: url, ...(providerTransactionId ? { providerTransactionId } : {}) },
+  });
   await recordAuditEvent({
     action: 'CREATE',
     result: 'SUCCESS',
@@ -281,7 +461,7 @@ export async function startCheckout(
     resourceType: 'PAYMENT',
     resourceId: payment.id,
     requestId,
-    metadata: { event: 'CHECKOUT_STARTED' },
+    metadata: { event: 'CHECKOUT_STARTED', method },
   });
 
   return { url };
@@ -313,7 +493,7 @@ export class BillingRetryLater extends Error {
 
 async function recordMismatch(
   accountId: string | null,
-  transactionId: number,
+  transactionId: number | string,
   reason: string,
   requestId?: string,
 ): Promise<ApplyResult> {
@@ -589,6 +769,153 @@ async function applyRenewalCharge(
   return { ...base, outcome: succeeded ? 'ACTIVE' : 'FAILED' };
 }
 
+const PAYMENT_SELECT = {
+  id: true,
+  accountId: true,
+  userId: true,
+  txRef: true,
+  amount: true,
+  currency: true,
+  status: true,
+  oneTime: true,
+  providerTransactionId: true,
+} as const satisfies Prisma.PaymentSelect;
+
+type PaymentRow = Prisma.PaymentGetPayload<{ select: typeof PAYMENT_SELECT }>;
+
+function flutterwaveCharge(transaction: FlutterwaveTransaction): VerifiedCharge {
+  return {
+    provider: 'FLUTTERWAVE',
+    providerTransactionId: String(transaction.id),
+    txRef: transaction.txRef,
+    amount: transaction.amount,
+    currency: transaction.currency,
+    status:
+      transaction.status === 'successful'
+        ? 'SUCCEEDED'
+        : transaction.status === 'failed'
+          ? 'FAILED'
+          : 'PENDING',
+    paidAt: transaction.createdAt,
+  };
+}
+
+/**
+ * A verified one-month purchase (Flutterwave, Paystack or PayPal): adds one
+ * month of Aila Pro after the account's current paid access. Exactly one
+ * delivery claims the payment, and the account row is locked while the
+ * period is computed, so concurrent purchases stack instead of overlapping.
+ */
+async function applyOneTimePayment(
+  payment: PaymentRow,
+  charge: VerifiedCharge,
+  requestId?: string,
+): Promise<ApplyResult> {
+  if (payment.status === 'SUCCEEDED' && payment.providerTransactionId !== charge.providerTransactionId) {
+    // A second charge on a checkout already paid: never a second month
+    // silently; the owner refunds it from the provider's dashboard.
+    return recordMismatch(payment.accountId, charge.providerTransactionId, 'DUPLICATE_CHARGE_REFUND_REQUIRED', requestId);
+  }
+
+  const check = checkVerifiedCharge(charge, {
+    txRef: payment.txRef,
+    amount: payment.amount.toFixed(2),
+    currency: payment.currency,
+  });
+
+  if (check.outcome === 'MISMATCH') {
+    return recordMismatch(payment.accountId, charge.providerTransactionId, `MISMATCH_${check.reason}`, requestId);
+  }
+
+  if (check.outcome === 'PENDING') {
+    return { outcome: 'PENDING', accountId: payment.accountId };
+  }
+
+  const db = getDb();
+
+  if (check.outcome === 'FAILED') {
+    // A later successful attempt on the same checkout still counts.
+    await db.payment.updateMany({
+      where: { id: payment.id, status: 'PENDING' },
+      data: { status: 'FAILED' },
+    });
+    return { outcome: 'FAILED', accountId: payment.accountId };
+  }
+
+  const now = new Date();
+  const paidAt = charge.paidAt.getTime() > now.getTime() ? now : charge.paidAt;
+
+  const result = await db.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "Account" WHERE "id" = ${payment.accountId} FOR UPDATE`;
+
+    const claimed = await tx.payment.updateMany({
+      where: { id: payment.id, status: { in: ['PENDING', 'FAILED'] } },
+      data: { status: 'SUCCEEDED', providerTransactionId: charge.providerTransactionId, paidAt },
+    });
+
+    if (claimed.count === 0) {
+      return { kind: 'ALREADY_APPLIED' as const };
+    }
+
+    const period = oneMonthAccess(await accessRows(payment.accountId, tx), paidAt);
+    let subscriptionId: string;
+
+    if (period.extendId) {
+      await tx.subscription.update({
+        where: { id: period.extendId },
+        data: { currentPeriodEnd: period.end },
+      });
+      subscriptionId = period.extendId;
+    } else {
+      const created = await tx.subscription.create({
+        data: {
+          accountId: payment.accountId,
+          provider: charge.provider,
+          plan: PLAN,
+          status: 'ACTIVE',
+          currentPeriodStart: period.start,
+          currentPeriodEnd: period.end,
+          // Never renews on its own; renewed by buying another month.
+          cancelAtPeriodEnd: true,
+        },
+        select: { id: true },
+      });
+      subscriptionId = created.id;
+    }
+
+    await tx.payment.update({ where: { id: payment.id }, data: { subscriptionId } });
+    await tx.trial.updateMany({
+      where: { accountId: payment.accountId, status: 'ACTIVE' },
+      data: { status: 'CONVERTED', endedAt: now },
+    });
+    await tx.auditLog.create({
+      data: auditLogData({
+        action: 'SUBSCRIPTION_CHANGE',
+        result: 'SUCCESS',
+        accountId: payment.accountId,
+        userId: payment.userId,
+        resourceType: 'SUBSCRIPTION',
+        resourceId: subscriptionId,
+        requestId,
+        metadata: {
+          event: period.extendId ? 'ACCESS_EXTENDED' : 'ACCESS_PURCHASED',
+          provider: charge.provider,
+          paymentId: payment.id,
+          until: period.end.toISOString(),
+        },
+      }),
+    });
+
+    return { kind: 'APPLIED' as const, subscriptionId };
+  });
+
+  return {
+    outcome: 'ACTIVE',
+    accountId: payment.accountId,
+    subscriptionId: result.kind === 'APPLIED' ? result.subscriptionId : undefined,
+  };
+}
+
 /**
  * Applies one Flutterwave transaction, re-read from Flutterwave's verify
  * endpoint (never from the webhook body or the redirect URL).
@@ -599,17 +926,12 @@ async function applyTransaction(
 ): Promise<ApplyResult> {
   const payment = await getDb().payment.findFirst({
     where: { provider: PROVIDER, txRef: transaction.txRef, checkoutExpiresAt: { not: null } },
-    select: {
-      id: true,
-      accountId: true,
-      userId: true,
-      txRef: true,
-      amount: true,
-      currency: true,
-      status: true,
-      providerTransactionId: true,
-    },
+    select: PAYMENT_SELECT,
   });
+
+  if (payment?.oneTime) {
+    return applyOneTimePayment(payment, flutterwaveCharge(transaction), requestId);
+  }
 
   // A paid checkout's reference can come back on a later charge; that charge
   // is a renewal, not the checkout payment again.
@@ -623,18 +945,90 @@ async function applyTransaction(
   return applyRenewalCharge(transaction, requestId);
 }
 
+/** The return-URL parameters each provider sends the customer back with. */
+export type CheckoutReturn =
+  | { readonly provider: 'FLUTTERWAVE'; readonly transactionId: number }
+  | { readonly provider: 'PAYSTACK'; readonly reference: string }
+  | { readonly provider: 'PAYPAL'; readonly orderId: string };
+
+type ConfirmOutcome = { readonly outcome: 'ACTIVE' | 'PENDING' | 'FAILED' };
+
+function toConfirmOutcome(result: ApplyResult): ConfirmOutcome {
+  return result.outcome === 'ACTIVE' || result.outcome === 'PENDING' || result.outcome === 'FAILED'
+    ? { outcome: result.outcome }
+    : { outcome: 'FAILED' };
+}
+
+function isNotFound(error: unknown): boolean {
+  return (
+    (error instanceof FlutterwaveError || error instanceof PaymentProviderError) &&
+    error.kind === 'REJECTED' &&
+    error.status !== null &&
+    error.status < 500
+  );
+}
+
 /**
- * Called when Flutterwave redirects the customer back to /billing. The
- * transaction ID in the URL is only a lookup key: the payment is verified
- * with Flutterwave and must belong to the signed-in account's checkout.
+ * Called when the provider sends the customer back to /billing. The value
+ * in the URL is only a lookup key: the payment must belong to the
+ * signed-in account's checkout and is verified with the provider (PayPal
+ * orders are captured here, on the server).
  */
 export async function confirmCheckout(
   ctx: AccountContext,
-  transactionId: number,
+  input: CheckoutReturn,
   requestId?: string,
-): Promise<{ readonly outcome: 'ACTIVE' | 'PENDING' | 'FAILED' }> {
+): Promise<ConfirmOutcome> {
   await requireBillingRateLimit(ctx);
 
+  if (input.provider === 'FLUTTERWAVE') {
+    return confirmFlutterwave(ctx, input.transactionId, requestId);
+  }
+
+  const payment = await getDb().payment.findFirst({
+    where: {
+      ...accountScope(ctx),
+      provider: input.provider,
+      oneTime: true,
+      checkoutExpiresAt: { not: null },
+      ...(input.provider === 'PAYSTACK'
+        ? { txRef: input.reference }
+        : { providerTransactionId: input.orderId }),
+    },
+    select: PAYMENT_SELECT,
+  });
+
+  if (!payment) {
+    throw new AppError('NOT_FOUND');
+  }
+
+  let charge: VerifiedCharge;
+
+  try {
+    charge =
+      input.provider === 'PAYSTACK'
+        ? await verifyPaystackTransaction(input.reference)
+        : await capturePaypalOrder(input.orderId);
+  } catch (error) {
+    if (isNotFound(error)) {
+      throw new AppError('NOT_FOUND');
+    }
+
+    throw dependencyFailure('verify payment', error, requestId);
+  }
+
+  try {
+    return toConfirmOutcome(await applyOneTimePayment(payment, charge, requestId));
+  } catch (error) {
+    throw dependencyFailure('confirm checkout', error, requestId);
+  }
+}
+
+async function confirmFlutterwave(
+  ctx: AccountContext,
+  transactionId: number,
+  requestId?: string,
+): Promise<ConfirmOutcome> {
   let transaction: FlutterwaveTransaction;
 
   try {
@@ -662,13 +1056,7 @@ export async function confirmCheckout(
   }
 
   try {
-    const result = await applyTransaction(transaction, requestId);
-
-    if (result.outcome === 'ACTIVE' || result.outcome === 'PENDING' || result.outcome === 'FAILED') {
-      return { outcome: result.outcome };
-    }
-
-    return { outcome: 'FAILED' };
+    return toConfirmOutcome(await applyTransaction(transaction, requestId));
   } catch (error) {
     if (error instanceof BillingRetryLater) {
       return { outcome: 'PENDING' };
@@ -853,4 +1241,63 @@ export async function processSubscriptionCancelledEvent(
 
   const [first] = subscriptions;
   return { outcome: 'CANCELLED', accountId: first.accountId, subscriptionId: first.id };
+}
+
+/**
+ * Paystack charge.success: the reference is only a lookup key; the
+ * transaction is re-read from Paystack's verify endpoint before it counts.
+ */
+export async function processPaystackCharge(reference: string, requestId?: string): Promise<ApplyResult> {
+  const payment = await getDb().payment.findFirst({
+    where: { provider: 'PAYSTACK', txRef: reference, oneTime: true, checkoutExpiresAt: { not: null } },
+    select: PAYMENT_SELECT,
+  });
+
+  if (!payment) {
+    // Not an Aila Pro checkout (another payment on the same Paystack account).
+    return { outcome: 'IGNORED', errorCode: 'UNKNOWN_REFERENCE' };
+  }
+
+  let charge: VerifiedCharge;
+
+  try {
+    charge = await verifyPaystackTransaction(reference);
+  } catch (error) {
+    if (isNotFound(error)) {
+      return recordMismatch(payment.accountId, reference, 'TRANSACTION_NOT_FOUND', requestId);
+    }
+
+    throw error;
+  }
+
+  return applyOneTimePayment(payment, charge, requestId);
+}
+
+/**
+ * PayPal order events: the order is read back from PayPal (and captured if
+ * the customer approved it but never returned to Aila) before it counts.
+ */
+export async function processPaypalOrder(orderId: string, requestId?: string): Promise<ApplyResult> {
+  const payment = await getDb().payment.findFirst({
+    where: { provider: 'PAYPAL', providerTransactionId: orderId, oneTime: true },
+    select: PAYMENT_SELECT,
+  });
+
+  if (!payment) {
+    return { outcome: 'IGNORED', errorCode: 'UNKNOWN_ORDER' };
+  }
+
+  let charge: VerifiedCharge;
+
+  try {
+    charge = await capturePaypalOrder(orderId);
+  } catch (error) {
+    if (isNotFound(error)) {
+      return recordMismatch(payment.accountId, orderId, 'ORDER_NOT_FOUND', requestId);
+    }
+
+    throw error;
+  }
+
+  return applyOneTimePayment(payment, charge, requestId);
 }

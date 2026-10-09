@@ -39,9 +39,11 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith('/api/trpc/') ||
     // Aila Intelligence streaming: the handler checks the session itself.
     pathname === '/api/intelligence/messages' ||
-    // Flutterwave calls this without a session; the handler checks the
-    // webhook's secret hash instead.
+    // Payment providers call these without a session; each handler
+    // authenticates the provider's signature instead.
     pathname === '/api/webhooks/flutterwave' ||
+    pathname === '/api/webhooks/paystack' ||
+    pathname === '/api/webhooks/paypal' ||
     pathname.startsWith('/_next/')
   ) {
     response = NextResponse.next({ request: { headers } });

@@ -195,3 +195,131 @@ export function canCancel(subscription: SubscriptionRecord | null, now: Date): b
   const state = subscriptionState(subscription, now);
   return state === 'ACTIVE' || state === 'RENEWAL_DUE' || state === 'PAST_DUE';
 }
+
+// ------------------------------------------------------------------
+// One-month purchases (Flutterwave, Paystack, PayPal)
+// ------------------------------------------------------------------
+
+/**
+ * A one-month purchase is stored as a Subscription row without a provider
+ * subscription ID and with cancelAtPeriodEnd set, so it never renews and
+ * every rule above treats it as paid up until its period end. Further
+ * purchases extend it.
+ */
+export type AccessRow = SubscriptionRecord & {
+  readonly id: string;
+  readonly providerSubscriptionId: string | null;
+};
+
+export function isOneTimeAccess(row: { readonly providerSubscriptionId: string | null }): boolean {
+  return row.providerSubscriptionId === null;
+}
+
+/** Access can be bought at most this far ahead (about a year). */
+export const MAX_PREPAID_MS = 366 * 24 * 60 * 60 * 1000;
+
+/** When the account's paid Aila Pro access ends; null if it has none now. */
+export function accessUntil(rows: readonly SubscriptionRecord[], now: Date): Date | null {
+  let until: Date | null = null;
+
+  for (const row of rows) {
+    const end = row.currentPeriodEnd;
+
+    if (row.status === 'ACTIVE' && end && end.getTime() > now.getTime() && (!until || end > until)) {
+      until = end;
+    }
+  }
+
+  return until;
+}
+
+/**
+ * The period a verified one-month purchase adds: it starts when the
+ * account's latest paid access ends (or at payment time if none), so
+ * purchases stack and paid time is never lost. If the latest access is
+ * itself a one-month purchase, that row is extended instead of adding one.
+ */
+export function oneMonthAccess(
+  rows: readonly AccessRow[],
+  paidAt: Date,
+): { readonly extendId: string | null; readonly start: Date; readonly end: Date } {
+  let latest: AccessRow | null = null;
+
+  for (const row of rows) {
+    const end = row.currentPeriodEnd;
+
+    if (
+      row.status === 'ACTIVE' &&
+      end &&
+      end.getTime() > paidAt.getTime() &&
+      (!latest || end.getTime() > (latest.currentPeriodEnd as Date).getTime())
+    ) {
+      latest = row;
+    }
+  }
+
+  const base = latest?.currentPeriodEnd ?? paidAt;
+  const end = addBillingPeriod(base);
+
+  if (latest && isOneTimeAccess(latest)) {
+    return { extendId: latest.id, start: latest.currentPeriodStart ?? base, end };
+  }
+
+  return { extendId: null, start: base, end };
+}
+
+export type OneMonthRefusal = 'RENEWING_SUBSCRIPTION' | 'PREPAID_LIMIT';
+
+/**
+ * Whether the account may buy a month now. Not while the Flutterwave card
+ * plan is still renewing (it would charge again on its own), and not more
+ * than about a year ahead.
+ */
+export function oneMonthRefusal(
+  planSubscription: SubscriptionRecord | null,
+  rows: readonly SubscriptionRecord[],
+  now: Date,
+): OneMonthRefusal | null {
+  if (canCancel(planSubscription, now)) {
+    return 'RENEWING_SUBSCRIPTION';
+  }
+
+  const until = accessUntil(rows, now);
+  return until && until.getTime() - now.getTime() > MAX_PREPAID_MS - 32 * 24 * 60 * 60 * 1000
+    ? 'PREPAID_LIMIT'
+    : null;
+}
+
+export type VerifiedChargeCheck =
+  | { readonly outcome: 'SUCCEEDED' | 'FAILED' | 'PENDING' }
+  | { readonly outcome: 'MISMATCH'; readonly reason: 'TX_REF' | 'CURRENCY' | 'AMOUNT' };
+
+/**
+ * Compares a provider-verified charge with the payment Aila created:
+ * reference, currency and, once paid, the exact amount in minor units.
+ */
+export function checkVerifiedCharge(
+  charge: {
+    readonly txRef: string;
+    readonly amount: number | string;
+    readonly currency: string;
+    readonly status: 'SUCCEEDED' | 'FAILED' | 'PENDING';
+  },
+  expected: { readonly txRef: string; readonly amount: number | string; readonly currency: string },
+): VerifiedChargeCheck {
+  if (charge.txRef !== expected.txRef) {
+    return { outcome: 'MISMATCH', reason: 'TX_REF' };
+  }
+
+  if (charge.currency !== expected.currency) {
+    return { outcome: 'MISMATCH', reason: 'CURRENCY' };
+  }
+
+  if (charge.status === 'SUCCEEDED') {
+    return toMinorUnits(charge.amount) === toMinorUnits(expected.amount)
+      ? { outcome: 'SUCCEEDED' }
+      : { outcome: 'MISMATCH', reason: 'AMOUNT' };
+  }
+
+  return { outcome: charge.status };
+}

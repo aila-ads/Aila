@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
+import type { CheckoutMethod } from '@aila/billing';
 import { api, apiErrorMessage } from '../../lib/trpc/client';
 import { Button } from '../ui/button';
 
@@ -13,28 +14,65 @@ function ErrorText({ error }: { error: string | null }) {
   ) : null;
 }
 
-/** Starts a Flutterwave checkout created on the server and goes to it. */
-export function SubscribeButton() {
+export type PaymentChoice = {
+  readonly method: CheckoutMethod;
+  readonly name: string;
+  readonly methods: string;
+  readonly price: string;
+  readonly note: string;
+};
+
+/**
+ * The configured payment methods, one row each. The chosen method's
+ * checkout is created on the server, then the browser goes to the
+ * provider's hosted page; no payment script runs on Aila.
+ */
+export function PaymentOptions({ choices }: { choices: readonly PaymentChoice[] }) {
   const [error, setError] = useState<string | null>(null);
+  const [opening, setOpening] = useState<CheckoutMethod | null>(null);
   const [pending, startTransition] = useTransition();
 
-  function subscribe() {
+  function pay(method: CheckoutMethod) {
     setError(null);
+    setOpening(method);
     startTransition(async () => {
       try {
-        const { url } = await api.billing.checkout.mutate();
+        const { url } = await api.billing.checkout.mutate({ method });
         window.location.assign(url);
       } catch (caught) {
+        setOpening(null);
         setError(apiErrorMessage(caught));
       }
     });
   }
 
   return (
-    <div className="grid justify-items-start gap-2">
-      <Button onClick={subscribe} disabled={pending}>
-        {pending ? 'Opening checkout…' : 'Subscribe to Aila Pro'}
-      </Button>
+    <div className="grid gap-3">
+      <ul className="grid gap-3" aria-label="Payment methods">
+        {choices.map((choice) => (
+          <li
+            key={choice.method}
+            className="grid gap-3 rounded-md border border-border bg-card/60 p-4 sm:grid-cols-[1fr_auto] sm:items-center"
+          >
+            <div className="grid gap-1">
+              <p className="font-serif text-lg tracking-[0.02em]">{choice.name}</p>
+              <p className="text-sm text-muted-foreground">{choice.methods}</p>
+              <p className="text-sm">
+                <span className="font-serif text-xl">{choice.price}</span>
+                <span className="text-muted-foreground"> {choice.note}</span>
+              </p>
+            </div>
+            <Button
+              variant={choice.method === 'FLUTTERWAVE_CARD_PLAN' ? 'outline' : 'default'}
+              disabled={pending}
+              onClick={() => pay(choice.method)}
+              aria-label={`Pay with ${choice.name}`}
+            >
+              {opening === choice.method ? 'Opening…' : 'Pay'}
+            </Button>
+          </li>
+        ))}
+      </ul>
       <ErrorText error={error} />
     </div>
   );
