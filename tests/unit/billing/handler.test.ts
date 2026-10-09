@@ -96,6 +96,7 @@ function resetDb() {
       checkoutUrl: null,
       checkoutExpiresAt: null,
       paidAt: null,
+      oneTime: false,
     }),
     subscription: table('subscription', [['provider', 'providerSubscriptionId']], {
       cancelAtPeriodEnd: false,
@@ -105,6 +106,7 @@ function resetDb() {
     trial: table('trial'),
     auditLog: table('audit'),
     $transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(db),
+    $queryRaw: async () => [],
   });
 }
 
@@ -194,7 +196,7 @@ function webhook(body: unknown, hash: string | null = SECRET): Request {
 }
 
 async function openCheckout(): Promise<{ txRef: string }> {
-  await startCheckout(ctx, 'req');
+  await startCheckout(ctx, 'FLUTTERWAVE_CARD_PLAN', 'req');
   const payment = db.payment.rows.at(-1)!;
   return { txRef: payment.txRef as string };
 }
@@ -244,7 +246,7 @@ describe('webhook authentication (AC-161)', () => {
 
 describe('checkout and activation (AC-160)', () => {
   it('creates the checkout from the plan price, never from the client', async () => {
-    const { url } = await startCheckout(ctx, 'req');
+    const { url } = await startCheckout(ctx, 'FLUTTERWAVE_CARD_PLAN', 'req');
     expect(url).toBe('https://checkout.flutterwave.com/v3/hosted/pay/abc');
 
     const [, init] = fetchMock.mock.calls.find(([input]) => String(input).endsWith('/payments'))!;
@@ -261,8 +263,8 @@ describe('checkout and activation (AC-160)', () => {
   });
 
   it('reuses the open checkout instead of starting a second one', async () => {
-    await startCheckout(ctx, 'req');
-    await startCheckout(ctx, 'req');
+    await startCheckout(ctx, 'FLUTTERWAVE_CARD_PLAN', 'req');
+    await startCheckout(ctx, 'FLUTTERWAVE_CARD_PLAN', 'req');
     expect(db.payment.rows).toHaveLength(1);
   });
 
@@ -293,7 +295,7 @@ describe('checkout and activation (AC-160)', () => {
   it('activates from the checkout return after verifying with Flutterwave', async () => {
     const { txRef } = await openCheckout();
     pay(502, txRef);
-    await expect(confirmCheckout(ctx, 502, 'req')).resolves.toEqual({ outcome: 'ACTIVE' });
+    await expect(confirmCheckout(ctx, { provider: 'FLUTTERWAVE', transactionId: 502 }, 'req')).resolves.toEqual({ outcome: 'ACTIVE' });
     expect(db.subscription.rows).toHaveLength(1);
   });
 
@@ -301,7 +303,7 @@ describe('checkout and activation (AC-160)', () => {
     const { txRef } = await openCheckout();
     pay(503, txRef);
     const other = { ...ctx, account: { id: 'acct_2' } };
-    await expect(confirmCheckout(other, 503, 'req')).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(confirmCheckout(other, { provider: 'FLUTTERWAVE', transactionId: 503 }, 'req')).rejects.toMatchObject({ code: 'NOT_FOUND' });
     expect(db.subscription.rows).toHaveLength(0);
   });
 
@@ -363,9 +365,9 @@ describe('idempotency (AC-162)', () => {
     const { txRef } = await openCheckout();
     pay(602, txRef);
 
-    await confirmCheckout(ctx, 602, 'req');
+    await confirmCheckout(ctx, { provider: 'FLUTTERWAVE', transactionId: 602 }, 'req');
     await handleFlutterwaveWebhook(webhook({ event: 'charge.completed', data: { id: 602, status: 'successful' } }));
-    await confirmCheckout(ctx, 602, 'req');
+    await confirmCheckout(ctx, { provider: 'FLUTTERWAVE', transactionId: 602 }, 'req');
 
     expect(db.subscription.rows).toHaveLength(1);
     expect(db.payment.rows.filter((row) => row.status === 'SUCCEEDED')).toHaveLength(1);
@@ -374,7 +376,7 @@ describe('idempotency (AC-162)', () => {
   it('extends the period once per renewal charge', async () => {
     const { txRef } = await openCheckout();
     pay(603, txRef);
-    await confirmCheckout(ctx, 603, 'req');
+    await confirmCheckout(ctx, { provider: 'FLUTTERWAVE', transactionId: 603 }, 'req');
     const firstEnd = db.subscription.rows[0].currentPeriodEnd as Date;
 
     flutterwave.transactions.set(604, { id: 604, tx_ref: 'flw-renewal-604', amount: 20, currency: 'USD', status: 'successful' });
@@ -395,7 +397,7 @@ describe('renewal failure and cancellation (AC-163)', () => {
   async function activate(id: number) {
     const { txRef } = await openCheckout();
     pay(id, txRef);
-    await confirmCheckout(ctx, id, 'req');
+    await confirmCheckout(ctx, { provider: 'FLUTTERWAVE', transactionId: id }, 'req');
     return db.subscription.rows[0];
   }
 
@@ -450,12 +452,12 @@ describe('renewal failure and cancellation (AC-163)', () => {
 
   it('only lets the account owner start a checkout or cancel', async () => {
     const member = { ...ctx, membership: { role: 'MEMBER' as const } };
-    await expect(startCheckout(member, 'req')).rejects.toThrow('FORBIDDEN');
+    await expect(startCheckout(member, 'FLUTTERWAVE_CARD_PLAN', 'req')).rejects.toThrow('FORBIDDEN');
     await expect(cancelSubscription(member, 'req')).rejects.toThrow('FORBIDDEN');
   });
 
   it('refuses a second checkout while Aila Pro is active', async () => {
     await activate(731);
-    await expect(startCheckout(ctx, 'req')).rejects.toMatchObject({ code: 'CONFLICT' });
+    await expect(startCheckout(ctx, 'FLUTTERWAVE_CARD_PLAN', 'req')).rejects.toMatchObject({ code: 'CONFLICT' });
   });
 });

@@ -135,7 +135,8 @@ export type CheckoutRequest = {
   readonly txRef: string;
   readonly amount: number;
   readonly currency: string;
-  readonly planId: number;
+  /** Card plan checkout; omitted for a one-month purchase with every method. */
+  readonly planId?: number;
   readonly redirectUrl: string;
   readonly email: string;
   readonly name: string | null;
@@ -143,8 +144,38 @@ export type CheckoutRequest = {
 };
 
 /**
- * Creates a Flutterwave Standard hosted checkout subscribed to the payment
- * plan, and returns its link. The customer pays on Flutterwave's page, so
+ * Every Flutterwave Standard payment method. Flutterwave shows only those
+ * that work for the checkout's currency and are enabled on the account
+ * (Settings > Business preferences > Payment methods), so for NGN the
+ * customer sees card, bank transfer, USSD, bank account, NQR, Barter,
+ * Opay, eNaira, Apple Pay and Google Pay.
+ */
+export const ALL_PAYMENT_OPTIONS = [
+  'card',
+  'banktransfer',
+  'ussd',
+  'account',
+  'internetbanking',
+  'nqr',
+  'barter',
+  'opay',
+  'enaira',
+  'applepay',
+  'googlepay',
+  'credit',
+  'mpesa',
+  'mobilemoneyghana',
+  'mobilemoneyuganda',
+  'mobilemoneyrwanda',
+  'mobilemoneyzambia',
+  'mobilemoneytanzania',
+  'mobilemoneyfranco',
+].join(', ');
+
+/**
+ * Creates a Flutterwave Standard hosted checkout and returns its link: on
+ * the payment plan (card only, renewed by Flutterwave) when a plan ID is
+ * given, otherwise a one-time charge with every payment method. The customer pays on Flutterwave's page, so
  * no card details reach Aila and no third-party script runs on Aila.
  */
 export async function createCheckout(request: CheckoutRequest): Promise<string> {
@@ -158,10 +189,12 @@ export async function createCheckout(request: CheckoutRequest): Promise<string> 
         tx_ref: request.txRef,
         amount: request.amount,
         currency: request.currency,
-        payment_plan: request.planId,
+        ...(request.planId === undefined
+          ? { payment_options: ALL_PAYMENT_OPTIONS }
+          : { payment_plan: request.planId }),
         redirect_url: request.redirectUrl,
         customer: { email: request.email, ...(request.name ? { name: request.name } : {}) },
-        customizations: { title: 'Aila Pro' },
+        customizations: { title: request.planId === undefined ? 'Aila Pro, one month' : 'Aila Pro' },
         configurations: { session_duration: request.sessionMinutes },
       },
     },

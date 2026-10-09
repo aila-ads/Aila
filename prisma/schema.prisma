@@ -46,6 +46,8 @@ enum SubscriptionStatus {
 
 enum BillingProvider {
   FLUTTERWAVE
+  PAYSTACK
+  PAYPAL
 }
 
 enum PlanCode {
@@ -355,6 +357,9 @@ model Payment {
   amount   Decimal       @db.Decimal(20, 2)
   currency String        @db.VarChar(3)
   status   PaymentStatus @default(PENDING)
+  // A one-month Aila Pro purchase that does not renew on its own; false for
+  // the Flutterwave card plan's first charge and its renewals.
+  oneTime  Boolean       @default(false)
 
   // Set only on checkouts Aila created: the provider's hosted link, reused
   // while it is still open. Renewal charges have neither.

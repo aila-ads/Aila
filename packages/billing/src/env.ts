@@ -53,3 +53,61 @@ export function getProPlanId(): number {
 
   return Number(value);
 }
+
+/** Whether every named variable is set; used to show only configured providers. */
+export function isConfigured(...names: string[]): boolean {
+  return names.every((name) => Boolean(process.env[name]?.trim()));
+}
+
+export const FLUTTERWAVE_ENV = ['FLUTTERWAVE_SECRET_KEY', 'FLUTTERWAVE_PRO_PLAN_ID'] as const;
+/** Paystack charges the Aila Pro price of the Flutterwave plan, in the same currency. */
+export const PAYSTACK_ENV = ['PAYSTACK_SECRET_KEY', ...FLUTTERWAVE_ENV] as const;
+export const PAYPAL_ENV = [
+  'PAYPAL_CLIENT_ID',
+  'PAYPAL_CLIENT_SECRET',
+  'PAYPAL_WEBHOOK_ID',
+  'AILA_PRO_PRICE_USD',
+] as const;
+
+/** Live Paystack secret keys start with sk_live_; test keys are refused. */
+export function getPaystackSecretKey(): string {
+  const secretKey = required('PAYSTACK_SECRET_KEY');
+
+  if (!secretKey.startsWith('sk_live_')) {
+    throw new BillingConfigError('PAYSTACK_SECRET_KEY must be a live secret key');
+  }
+
+  return secretKey;
+}
+
+export type PaypalConfig = {
+  readonly clientId: string;
+  readonly clientSecret: string;
+};
+
+/** The live REST app's credentials (the API host is always the live one). */
+export function getPaypalConfig(): PaypalConfig {
+  return { clientId: required('PAYPAL_CLIENT_ID'), clientSecret: required('PAYPAL_CLIENT_SECRET') };
+}
+
+/** The ID PayPal shows for the webhook registered on the live app. */
+export function getPaypalWebhookId(): string {
+  const id = required('PAYPAL_WEBHOOK_ID');
+
+  if (!/^[A-Za-z0-9-]{1,64}$/.test(id)) {
+    throw new BillingConfigError('PAYPAL_WEBHOOK_ID must be a PayPal webhook ID');
+  }
+
+  return id;
+}
+
+/** The one-month Aila Pro price charged through PayPal, in US dollars (e.g. 4.00). */
+export function getProPriceUsd(): string {
+  const value = required('AILA_PRO_PRICE_USD');
+
+  if (!/^(0|[1-9][0-9]{0,5})(\.[0-9]{1,2})?$/.test(value) || Number(value) <= 0) {
+    throw new BillingConfigError('AILA_PRO_PRICE_USD must be a positive amount such as 4.00');
+  }
+
+  return Number(value).toFixed(2);
+}

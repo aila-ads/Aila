@@ -1,6 +1,6 @@
 /**
  * Aila Billing Service (APPLICATION-ARCHITECTURE §17). Server only: it
- * reads the Flutterwave secret key and writes billing state. Product code
+ * reads the Flutterwave, Paystack and PayPal secrets and writes billing state. Product code
  * never imports this; it asks the entitlement service.
  */
 export {
@@ -10,6 +10,9 @@ export {
   startCheckout,
   type BillingPrice,
   type BillingSummary,
+  type CheckoutMethod,
+  type CheckoutOption,
+  type CheckoutReturn,
 } from './service';
-export { handleFlutterwaveWebhook } from './handler';
+export { handleFlutterwaveWebhook, handlePaypalWebhook, handlePaystackWebhook } from './handler';
 export type { SubscriptionState } from './state';
