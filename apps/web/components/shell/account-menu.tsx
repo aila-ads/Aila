@@ -1,5 +1,6 @@
 'use client';
 
+import { useRef } from 'react';
 import Link from 'next/link';
 import { signOut } from '@aila/auth/actions';
 import { Button } from '../ui/button';
@@ -17,10 +18,13 @@ export type ShellUser = { readonly name: string | null; readonly email: string }
 /** Account menu: who is signed in, settings and sign out. */
 export function AccountMenu({ user }: { user: ShellUser }) {
   const label = user.name || user.email;
+  // The form stays outside the menu: the menu unmounts its items as soon as
+  // one is selected, which would cancel a submit started by a button inside it.
+  const signOutForm = useRef<HTMLFormElement>(null);
 
   return (
     <>
-      <form id="account-sign-out" action={signOut} />
+      <form ref={signOutForm} action={signOut} />
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" size="icon" aria-label="Account menu">
@@ -43,10 +47,8 @@ export function AccountMenu({ user }: { user: ShellUser }) {
           <DropdownMenuItem asChild>
             <Link href="/settings">Account settings</Link>
           </DropdownMenuItem>
-          <DropdownMenuItem asChild>
-            <button type="submit" form="account-sign-out">
-              Sign out
-            </button>
+          <DropdownMenuItem onSelect={() => signOutForm.current?.requestSubmit()}>
+            Sign out
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
