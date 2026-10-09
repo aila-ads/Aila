@@ -77,8 +77,8 @@ describe('checkCharge (status, amount, currency, tx_ref)', () => {
   it('rejects a different tx_ref, currency or amount', () => {
     expect(checkCharge(tx({ txRef: 'other' }), expected)).toEqual({ outcome: 'MISMATCH', reason: 'TX_REF' });
     expect(checkCharge(tx({ currency: 'NGN' }), expected)).toEqual({ outcome: 'MISMATCH', reason: 'CURRENCY' });
-    expect(checkCharge(tx({ amount: 19.99 }), expected)).toEqual({ outcome: 'MISMATCH', reason: 'AMOUNT' });
-    expect(checkCharge(tx({ amount: 200 }), expected)).toEqual({ outcome: 'MISMATCH', reason: 'AMOUNT' });
+    expect(checkCharge(tx({ amount: 19.99 }), expected)).toMatchObject({ outcome: 'MISMATCH', reason: 'AMOUNT' });
+    expect(checkCharge(tx({ amount: 200 }), expected)).toMatchObject({ outcome: 'MISMATCH', reason: 'AMOUNT' });
   });
 
   it('never treats a failed or pending charge as paid', () => {

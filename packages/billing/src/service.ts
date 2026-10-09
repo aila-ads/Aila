@@ -48,6 +48,8 @@ import {
   renewedPeriod,
   subscriptionState,
   toMinorUnits,
+  type AmountDetail,
+  type ChargeCheck,
   type SubscriptionState,
 } from './state';
 
@@ -496,6 +498,7 @@ async function recordMismatch(
   transactionId: number | string,
   reason: string,
   requestId?: string,
+  detail?: AmountDetail,
 ): Promise<ApplyResult> {
   await recordAuditEvent({
     action: 'SECURITY_EVENT',
@@ -505,10 +508,15 @@ async function recordMismatch(
     resourceType: 'PAYMENT',
     resourceId: String(transactionId),
     requestId,
-    metadata: { event: 'PAYMENT_REJECTED', reason },
+    metadata: { event: 'PAYMENT_REJECTED', reason, ...(detail ?? {}) },
   });
-  console.error('[billing] Transaction rejected', { transactionId, reason });
+  // IDs, reason and amounts in minor units only; never keys or customer data.
+  console.error('[billing] Transaction rejected', { transactionId, reason, requestId: requestId ?? null, ...(detail ?? {}) });
   return { outcome: 'REJECTED', errorCode: reason, accountId: accountId ?? undefined };
+}
+
+function mismatchDetail(check: ChargeCheck): AmountDetail | undefined {
+  return check.outcome === 'MISMATCH' && check.reason === 'AMOUNT' ? check.detail : undefined;
 }
 
 type CheckoutPayment = {
@@ -533,7 +541,7 @@ async function applyCheckoutPayment(
   });
 
   if (check.outcome === 'MISMATCH') {
-    return recordMismatch(payment.accountId, transaction.id, `MISMATCH_${check.reason}`, requestId);
+    return recordMismatch(payment.accountId, transaction.id, `MISMATCH_${check.reason}`, requestId, mismatchDetail(check));
   }
 
   if (check.outcome === 'PENDING') {
@@ -698,7 +706,7 @@ async function applyRenewalCharge(
   const check = checkCharge(transaction, { amount: plan.amount, currency: plan.currency });
 
   if (check.outcome === 'MISMATCH') {
-    return recordMismatch(subscription.accountId, transaction.id, `MISMATCH_${check.reason}`, requestId);
+    return recordMismatch(subscription.accountId, transaction.id, `MISMATCH_${check.reason}`, requestId, mismatchDetail(check));
   }
 
   if (check.outcome === 'PENDING') {
@@ -788,7 +796,9 @@ function flutterwaveCharge(transaction: FlutterwaveTransaction): VerifiedCharge 
     provider: 'FLUTTERWAVE',
     providerTransactionId: String(transaction.id),
     txRef: transaction.txRef,
+    // The price before fees; charged_amount includes fees passed on to the customer.
     amount: transaction.amount,
+    chargedAmount: transaction.chargedAmount ?? undefined,
     currency: transaction.currency,
     status:
       transaction.status === 'successful'
@@ -824,7 +834,13 @@ async function applyOneTimePayment(
   });
 
   if (check.outcome === 'MISMATCH') {
-    return recordMismatch(payment.accountId, charge.providerTransactionId, `MISMATCH_${check.reason}`, requestId);
+    return recordMismatch(
+      payment.accountId,
+      charge.providerTransactionId,
+      `MISMATCH_${check.reason}`,
+      requestId,
+      mismatchDetail(check),
+    );
   }
 
   if (check.outcome === 'PENDING') {

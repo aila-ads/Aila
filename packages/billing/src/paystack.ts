@@ -104,8 +104,12 @@ const transactionSchema = z.object({
   id: z.number().int().positive(),
   status: z.string(),
   reference: z.string().min(1),
-  /** Minor units. */
+  /** Minor units: what the customer was charged, including fees passed on to them. */
   amount: z.number().int().nonnegative(),
+  /** Minor units: the amount Aila initialized, before fees passed on to the customer. */
+  requested_amount: z.number().int().nonnegative().nullable().optional(),
+  /** Minor units: Paystack's fees on the transaction. */
+  fees: z.number().int().nonnegative().nullable().optional(),
   currency: z.string().regex(/^[A-Z]{3}$/),
   paid_at: z.string().nullable().optional(),
   created_at: z.string().nullable().optional(),
@@ -116,6 +120,28 @@ export function mapPaystackStatus(status: string): VerifiedCharge['status'] {
   if (status === 'success') return 'SUCCEEDED';
   if (status === 'failed' || status === 'abandoned' || status === 'reversed') return 'FAILED';
   return 'PENDING';
+}
+
+/**
+ * The price of a verified transaction before fees. When the merchant passes
+ * Paystack's fees on to the customer, `amount` is the price plus fees and
+ * `requested_amount` the price Aila initialized. Older responses without
+ * `requested_amount` fall back to `amount - fees`, then `amount`.
+ */
+export function paystackAmounts(data: {
+  readonly amount: number;
+  readonly requested_amount?: number | null;
+  readonly fees?: number | null;
+}): { readonly priceMinor: number; readonly chargedMinor: number; readonly netOfFees: boolean } {
+  if (typeof data.requested_amount === 'number' && data.requested_amount > 0) {
+    return { priceMinor: data.requested_amount, chargedMinor: data.amount, netOfFees: false };
+  }
+
+  if (typeof data.fees === 'number' && data.fees > 0 && data.fees < data.amount) {
+    return { priceMinor: data.amount - data.fees, chargedMinor: data.amount, netOfFees: true };
+  }
+
+  return { priceMinor: data.amount, chargedMinor: data.amount, netOfFees: false };
 }
 
 /** The transaction as recorded by Paystack (verify by reference). */
@@ -135,11 +161,15 @@ export async function verifyPaystackTransaction(reference: string): Promise<Veri
     throw new PaymentProviderError('Paystack', 'REJECTED', 'verify transaction');
   }
 
+  const amounts = paystackAmounts(data);
+
   return {
     provider: 'PAYSTACK',
     providerTransactionId: String(data.id),
     txRef: data.reference,
-    amount: (data.amount / 100).toFixed(2),
+    amount: (amounts.priceMinor / 100).toFixed(2),
+    chargedAmount: (amounts.chargedMinor / 100).toFixed(2),
+    ...(amounts.netOfFees ? { amountIsNetOfFees: true } : {}),
     currency: data.currency,
     status: mapPaystackStatus(data.status),
     paidAt,

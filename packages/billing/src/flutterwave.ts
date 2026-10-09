@@ -46,7 +46,10 @@ export type FlutterwavePlan = z.infer<typeof planSchema>;
 const transactionSchema = z.object({
   id: z.number().int().positive(),
   tx_ref: z.string().min(1),
+  /** The price Aila asked for, before fees. */
   amount: amountSchema,
+  /** What the customer paid: amount plus app_fee when fees are passed on to them. */
+  charged_amount: z.coerce.number().nonnegative().finite().nullable().optional(),
   currency: currencySchema,
   status: z.string(),
   created_at: z.string().min(1),
@@ -56,7 +59,10 @@ const transactionSchema = z.object({
 export type FlutterwaveTransaction = {
   readonly id: number;
   readonly txRef: string;
+  /** The price Aila asked for (Flutterwave `amount`), never `charged_amount`. */
   readonly amount: number;
+  /** What the customer was charged, fees included; null if not reported. */
+  readonly chargedAmount?: number | null;
   readonly currency: string;
   /** successful, failed or pending, as reported by Flutterwave. */
   readonly status: string;
@@ -220,6 +226,7 @@ export async function verifyTransaction(transactionId: number): Promise<Flutterw
     id: data.id,
     txRef: data.tx_ref,
     amount: data.amount,
+    chargedAmount: data.charged_amount ?? null,
     currency: data.currency,
     status: data.status,
     createdAt,
