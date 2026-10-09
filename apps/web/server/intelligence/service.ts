@@ -15,6 +15,7 @@ import {
   type AiMessage,
   type SendMessageInput,
 } from '@aila/validation';
+import { SYSTEM_PROMPT } from './system-prompt';
 
 /**
  * Aila Intelligence (AILA-V1-SCOPE §7, PRODUCT-SPEC §10, §18,
@@ -45,13 +46,7 @@ export const FILE_CHARS = 100_000;
 /** Most files kept as context across a conversation, newest first. */
 const CONTEXT_FILES = 3;
 
-export const SYSTEM_PROMPT = [
-  'You are Aila Intelligence, the general-purpose AI workspace in Aila.',
-  'Help with ideas, planning, problem-solving, research, analysis, summaries and actionable plans.',
-  'Be accurate and direct. Use Markdown headings, lists and tables when they make an answer clearer.',
-  'If you are unsure or lack information, say so instead of guessing.',
-  'Never claim to have browsed the web or run code.',
-].join(' ');
+export { SYSTEM_PROMPT };
 
 const notFound = () => new AppError('NOT_FOUND', { message: 'We could not find that conversation.' });
 

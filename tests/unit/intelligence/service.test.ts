@@ -237,6 +237,17 @@ describe('sendMessage (AC-061, AC-250)', () => {
     ]);
   });
 
+  it('sends Aila’s identity as the first system message', async () => {
+    ai.stream.mockResolvedValue(gatewayStream([{ type: 'done', model: 'm', finishReason: 'stop', usage }]).iterable);
+    await send();
+    const [first] = ai.stream.mock.calls[0]![1].messages;
+    expect(first).toEqual({ role: 'system', content: service.SYSTEM_PROMPT });
+    expect(service.SYSTEM_PROMPT).toContain('You are Aila, the AI assistant in Aila Intelligence by AILA LUXE VENTURES.');
+    expect(service.SYSTEM_PROMPT).toContain('Aila was founded by Ms. Ezeh Adachukwu, a Nigerian founder.');
+    expect(service.SYSTEM_PROMPT).toContain('Never invent any other company, founders');
+    expect(service.SYSTEM_PROMPT).not.toMatch(/Aura Labs|born|years old|\bson\b|2001|2015/i);
+  });
+
   it('attaches only the account’s own text files, as data', async () => {
     storage.readContextFiles.mockResolvedValue([{ kind: 'text', id: 'f1', name: 'notes.txt', text: 'Revenue 10', truncated: false }]);
     ai.stream.mockResolvedValue(gatewayStream([{ type: 'done', model: 'm', finishReason: 'stop', usage }]).iterable);
