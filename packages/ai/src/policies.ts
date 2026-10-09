@@ -53,7 +53,17 @@ export const AI_MAX_INPUT_CHARS: Readonly<Record<AiCapability, number>> = {
   reasoning: 120_000,
   coding: 200_000,
   long_context: 1_000_000,
+  vision: 120_000,
+  transcribe: 2_000,
 };
+
+/**
+ * Input that is not text, counted as characters for the usage budget:
+ * about 1,500 tokens per image and 32 tokens per second of audio
+ * (a two-minute clip is about 3,900 tokens).
+ */
+export const AI_IMAGE_CHARS = 6_000;
+export const AI_AUDIO_CHARS = 16_000;
 
 /** At most one retry, only for transient failures (AI-GATEWAY §23). */
 export const AI_RETRY = {

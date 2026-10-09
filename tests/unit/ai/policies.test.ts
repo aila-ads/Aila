@@ -28,6 +28,8 @@ describe('model policy', () => {
     expect(MODEL_POLICY.reasoning.primary).toBe('deepseek/deepseek-r1');
     expect(MODEL_POLICY.coding.primary).toBe('qwen/qwen3-coder');
     expect(MODEL_POLICY.long_context.primary).toBe('google/gemini-3.8-flash');
+    expect(MODEL_POLICY.vision.primary).toBe('google/gemini-3.8-flash');
+    expect(MODEL_POLICY.transcribe.primary).toBe('google/gemini-3.5-flash-lite');
   });
 
   it('enables fallback only for fast and balanced, to another model family', () => {
