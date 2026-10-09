@@ -1,8 +1,8 @@
 import type { EntitlementKey } from '@aila/auth/server';
 
 /**
- * The six Aila products (PRODUCT-SPEC §10-15). No product workspace exists
- * yet, so none has a route; each gets one when its step ships.
+ * The six Aila products (PRODUCT-SPEC §10-15). A product gets a route when
+ * its workspace ships; the others are shown as coming soon.
  */
 export const PRODUCTS: ReadonlyArray<{
   readonly key: EntitlementKey;
@@ -14,7 +14,7 @@ export const PRODUCTS: ReadonlyArray<{
     key: 'intelligence',
     name: 'Aila Intelligence',
     purpose: 'A general-purpose AI workspace for conversations and ideas.',
-    href: null,
+    href: '/intelligence',
   },
   {
     key: 'writer',

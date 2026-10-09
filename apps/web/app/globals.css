@@ -187,3 +187,58 @@
     @apply border-l-2 border-brass pl-3 text-muted-foreground;
   }
 }
+
+/* Aila Intelligence replies rendered from Markdown (no inline styles). */
+@layer components {
+  .aila-prose {
+    @apply grid gap-3 leading-relaxed break-words;
+  }
+
+  .aila-prose :where(h1, h2, h3, h4) {
+    @apply mt-2 font-serif font-semibold;
+  }
+
+  .aila-prose h1 {
+    @apply text-2xl;
+  }
+
+  .aila-prose h2 {
+    @apply text-xl;
+  }
+
+  .aila-prose :where(h3, h4) {
+    @apply text-lg;
+  }
+
+  .aila-prose ul {
+    @apply grid list-disc gap-1 pl-6;
+  }
+
+  .aila-prose ol {
+    @apply grid list-decimal gap-1 pl-6;
+  }
+
+  .aila-prose a {
+    @apply text-primary underline decoration-brass underline-offset-4 hover:decoration-2;
+  }
+
+  .aila-prose blockquote {
+    @apply border-l-2 border-brass pl-3 text-muted-foreground;
+  }
+
+  .aila-prose code {
+    @apply bg-muted px-1 font-mono text-[0.9em];
+  }
+
+  .aila-prose pre {
+    @apply overflow-x-auto border bg-muted p-3;
+  }
+
+  .aila-prose pre code {
+    @apply bg-transparent p-0;
+  }
+
+  .aila-prose hr {
+    @apply my-2;
+  }
+}

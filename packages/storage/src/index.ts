@@ -5,6 +5,9 @@ export {
   deleteFile,
   getDownloadUrl,
   listFiles,
+  readTextFiles,
+  TEXT_FILE_TYPES,
   type FileItem,
+  type FileText,
   type UploadTicket,
 } from './files';

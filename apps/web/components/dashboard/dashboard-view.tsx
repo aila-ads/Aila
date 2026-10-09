@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import type { EntitlementSummary, TrialSummary } from '@aila/auth/server';
 import { TrialStatus } from '../account/trial-status';
 import { BillingLink } from '../billing/billing-link';
@@ -49,20 +50,33 @@ export function DashboardView({ name, trial, entitlements }: DashboardData) {
           {PRODUCTS.map((product) => {
             const available = entitlements.keys.includes(product.key);
 
+            const card = (
+              <Card className="w-full gap-4 transition-colors hover:border-brass">
+                <CardHeader>
+                  <h3 className="text-xl leading-none font-semibold">{product.name}</h3>
+                  <CardDescription>{product.purpose}</CardDescription>
+                </CardHeader>
+                <CardContent className="mt-auto flex flex-wrap gap-2">
+                  <Badge variant={available ? 'default' : 'outline'}>
+                    {available ? 'Available' : 'Requires Aila Pro'}
+                  </Badge>
+                  {product.href ? null : <Badge variant="secondary">Coming soon</Badge>}
+                </CardContent>
+              </Card>
+            );
+
             return (
               <li key={product.key} className="flex">
-                <Card className="w-full gap-4 transition-colors hover:border-brass">
-                  <CardHeader>
-                    <h3 className="text-xl leading-none font-semibold">{product.name}</h3>
-                    <CardDescription>{product.purpose}</CardDescription>
-                  </CardHeader>
-                  <CardContent className="mt-auto flex flex-wrap gap-2">
-                    <Badge variant={available ? 'default' : 'outline'}>
-                      {available ? 'Available' : 'Requires Aila Pro'}
-                    </Badge>
-                    {product.href ? null : <Badge variant="secondary">Coming soon</Badge>}
-                  </CardContent>
-                </Card>
+                {product.href ? (
+                  <Link
+                    href={product.href}
+                    className="flex w-full outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                  >
+                    {card}
+                  </Link>
+                ) : (
+                  card
+                )}
               </li>
             );
           })}

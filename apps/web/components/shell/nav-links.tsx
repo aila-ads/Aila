@@ -37,7 +37,7 @@ export function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
           );
         }
 
-        const current = pathname === item.href;
+        const current = pathname === item.href || pathname.startsWith(`${item.href}/`);
 
         return (
           <li key={item.label}>

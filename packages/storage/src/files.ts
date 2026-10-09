@@ -369,3 +369,60 @@ export async function deleteFile(
 
   await cleanUpAccountFiles(ctx);
 }
+
+/** File types whose text can be given to the AI directly. */
+export const TEXT_FILE_TYPES: readonly string[] = ['text/plain', 'text/csv'];
+
+export type FileText = {
+  readonly id: string;
+  readonly name: string;
+  readonly text: string;
+  /** True when only the start of the file was read. */
+  readonly truncated: boolean;
+};
+
+/**
+ * The text of the account's ready TXT or CSV files, for AI context
+ * (AC-063). Files are looked up only within the signed-in account; files
+ * that are missing, deleted, of another type or another account's are left
+ * out. At most `maxBytes` are read from each file.
+ */
+export async function readTextFiles(
+  ctx: AccountContext,
+  fileIds: readonly string[],
+  maxBytes: number,
+): Promise<FileText[]> {
+  if (fileIds.length === 0) {
+    return [];
+  }
+
+  const files = await getDb().file.findMany({
+    where: {
+      id: { in: [...fileIds] },
+      ...accountScope(ctx),
+      status: 'READY',
+      deletedAt: null,
+      mimeType: { in: [...TEXT_FILE_TYPES] },
+    },
+    select: { id: true, name: true, sizeBytes: true, storageKey: true },
+  });
+  const byId = new Map(files.map((file) => [file.id, file]));
+  const result: FileText[] = [];
+
+  for (const id of fileIds) {
+    const file = byId.get(id);
+
+    const size = Number(file?.sizeBytes ?? 0);
+
+    if (!file || size <= 0) {
+      continue;
+    }
+
+    const bytes = await storageCall('readText', () => readStart(file.storageKey, Math.min(size, maxBytes)));
+    // A character cut off at the end of the sample is dropped, not replaced.
+    const text = new TextDecoder('utf-8').decode(bytes, { stream: true });
+    result.push({ id: file.id, name: file.name, text, truncated: size > maxBytes });
+  }
+
+  return result;
+}

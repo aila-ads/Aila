@@ -8,3 +8,4 @@ export * from './billing';
 export * from './account';
 export * from './errors';
 export * from './files';
+export * from './intelligence';
