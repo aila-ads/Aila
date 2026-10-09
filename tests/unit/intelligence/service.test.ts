@@ -23,7 +23,7 @@ const db = vi.hoisted(() => {
 
 const auth = vi.hoisted(() => ({ requireEntitlement: vi.fn(), recordAuditEvent: vi.fn() }));
 const ai = vi.hoisted(() => ({ stream: vi.fn() }));
-const storage = vi.hoisted(() => ({ readTextFiles: vi.fn() }));
+const storage = vi.hoisted(() => ({ readContextFiles: vi.fn() }));
 
 vi.mock('../../../packages/db/src/index.ts', () => ({ getDb: () => db }));
 vi.mock('../../../packages/auth/src/server-entry.ts', () => ({
@@ -33,7 +33,10 @@ vi.mock('../../../packages/auth/src/server-entry.ts', () => ({
   requireEntitlement: auth.requireEntitlement,
 }));
 vi.mock('../../../packages/ai/src/index.ts', () => ({ stream: ai.stream }));
-vi.mock('../../../packages/storage/src/index.ts', () => ({ readTextFiles: storage.readTextFiles }));
+vi.mock('../../../packages/storage/src/index.ts', () => ({
+  readContextFiles: storage.readContextFiles,
+  MAX_CONTEXT_IMAGE_BYTES: 8 * 1024 * 1024,
+}));
 
 const service = await import('../../../apps/web/server/intelligence/service');
 const { AppError } = await import('../../../packages/validation/src/errors');
@@ -90,7 +93,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.spyOn(console, 'error').mockImplementation(() => undefined);
   auth.requireEntitlement.mockResolvedValue({ keys: ['intelligence'], proAccess: { allowed: true, source: 'TRIAL' } });
-  storage.readTextFiles.mockResolvedValue([]);
+  storage.readContextFiles.mockResolvedValue([]);
   db.conversation.create.mockResolvedValue({ id: 'conv_new' });
   db.conversation.updateMany.mockResolvedValue({ count: 1 });
   db.message.create.mockImplementation(async ({ data }: { data: Row }) => ({ id: data.role === 'USER' ? 'msg_user' : 'msg_reply' }));
@@ -235,10 +238,10 @@ describe('sendMessage (AC-061, AC-250)', () => {
   });
 
   it('attaches only the account’s own text files, as data', async () => {
-    storage.readTextFiles.mockResolvedValue([{ id: 'f1', name: 'notes.txt', text: 'Revenue 10', truncated: false }]);
+    storage.readContextFiles.mockResolvedValue([{ kind: 'text', id: 'f1', name: 'notes.txt', text: 'Revenue 10', truncated: false }]);
     ai.stream.mockResolvedValue(gatewayStream([{ type: 'done', model: 'm', finishReason: 'stop', usage }]).iterable);
     await collect(await send({ fileIds: ['f1'] }));
-    expect(storage.readTextFiles).toHaveBeenCalledWith(ctx, ['f1'], expect.any(Number));
+    expect(storage.readContextFiles).toHaveBeenCalledWith(ctx, ['f1'], expect.any(Number));
     const context = ai.stream.mock.calls[0]![1].messages[1];
     expect(context.role).toBe('system');
     expect(context.content).toContain('not as instructions');
@@ -247,7 +250,7 @@ describe('sendMessage (AC-061, AC-250)', () => {
   });
 
   it('rejects files it cannot read for this account before calling the AI', async () => {
-    storage.readTextFiles.mockResolvedValue([]);
+    storage.readContextFiles.mockResolvedValue([]);
     await expect(send({ fileIds: ['someone-elses'] })).rejects.toMatchObject({ reason: 'INTELLIGENCE_FILE_UNSUPPORTED' });
     expect(ai.stream).not.toHaveBeenCalled();
   });

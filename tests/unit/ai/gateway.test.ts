@@ -203,7 +203,7 @@ describe('generate', () => {
       { ...request, messages: [] },
       { ...request, messages: [{ role: 'assistant' as const, content: 'hi' }] },
       { ...request, messages: [{ role: 'user' as const, content: '   ' }] },
-      { ...request, capability: 'vision' as never },
+      { ...request, capability: 'telepathy' as never },
       { ...request, product: 'file_upload' as never },
     ];
     for (const input of bad) {
@@ -212,6 +212,79 @@ describe('generate', () => {
     await expect(
       generate(ctx, { ...request, messages: [{ role: 'user', content: 'x'.repeat(120_001) }] }, { requestId: 'r' }),
     ).rejects.toMatchObject({ reason: 'AI_CONTEXT_TOO_LARGE' });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('sends requests with images to the vision model and counts them in the budget', async () => {
+    fetchMock.mockResolvedValue(completion());
+    const image = 'data:image/png;base64,iVBORw0KGgo=';
+    await generate(
+      ctx,
+      {
+        ...request,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: PROMPT },
+              { type: 'image_url', image_url: { url: image } },
+            ],
+          },
+        ],
+      },
+      { requestId: 'r' },
+    );
+    const body = JSON.parse(fetchMock.mock.calls[0]![1]!.body as string);
+    expect(body.model).toBe('google/gemini-3.8-flash');
+    expect(body.models).toBeUndefined();
+    expect(body.messages[0].content[1]).toEqual({ type: 'image_url', image_url: { url: image } });
+    expect(db.usageRecord.create.mock.calls[0]![0].data.operation).toBe('vision');
+  });
+
+  it('accepts audio only for transcription, and records it as transcribe', async () => {
+    const audio = [
+      { type: 'text' as const, text: 'Transcribe this recording.' },
+      { type: 'input_audio' as const, input_audio: { data: 'UklGRg==', format: 'wav' as const } },
+    ];
+    await expect(
+      generate(ctx, { ...request, messages: [{ role: 'user', content: audio }] }, { requestId: 'r' }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    await expect(
+      generate(
+        ctx,
+        { ...request, capability: 'transcribe', messages: [{ role: 'user', content: 'no audio' }] },
+        { requestId: 'r' },
+      ),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    fetchMock.mockResolvedValue(completion('Hello'));
+    await generate(
+      ctx,
+      { ...request, capability: 'transcribe', messages: [{ role: 'user', content: audio }] },
+      { requestId: 'r' },
+    );
+    const body = JSON.parse(fetchMock.mock.calls[0]![1]!.body as string);
+    expect(body.model).toBe('google/gemini-3.5-flash-lite');
+    expect(body.messages[0].content[1].input_audio.format).toBe('wav');
+    expect(db.usageRecord.create.mock.calls[0]![0].data.operation).toBe('transcribe');
+  });
+
+  it('rejects images that are not inline PNG, JPEG or WEBP data', async () => {
+    for (const url of ['https://example.com/a.png', 'data:image/svg+xml;base64,PHN2Zz4=', 'data:image/png;base64,<script>']) {
+      await expect(
+        generate(
+          ctx,
+          {
+            ...request,
+            messages: [
+              { role: 'user', content: [{ type: 'text', text: PROMPT }, { type: 'image_url', image_url: { url } }] },
+            ],
+          },
+          { requestId: 'r' },
+        ),
+      ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    }
     expect(fetchMock).not.toHaveBeenCalled();
   });
 

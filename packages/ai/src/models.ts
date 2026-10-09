@@ -47,6 +47,22 @@ export const MODEL_POLICY: Readonly<Record<AiCapability, ModelPolicy>> = {
     operation: 'document_analysis',
     entitlement: null,
   },
+  // Used automatically when a request carries images (image input checked
+  // in OpenRouter's model list on 2026-10-09).
+  vision: {
+    primary: 'google/gemini-3.8-flash',
+    fallbacks: [],
+    operation: 'document_analysis',
+    entitlement: null,
+  },
+  // Voice input: audio in, verbatim text out (audio input checked in
+  // OpenRouter's model list on 2026-10-09).
+  transcribe: {
+    primary: 'google/gemini-3.5-flash-lite',
+    fallbacks: [],
+    operation: 'short_generation',
+    entitlement: null,
+  },
 };
 
 /** Models to try in order for a capability: the primary, then any fallbacks. */

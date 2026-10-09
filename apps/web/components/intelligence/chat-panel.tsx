@@ -10,7 +10,11 @@ import {
 } from '@aila/validation';
 import { cn } from '../../lib/utils';
 import { Button } from '../ui/button';
+import { Attachments, type AttachableFile } from './attachments';
 import { AssistantMarkdown } from './markdown';
+import { VoiceInput } from './voice-input';
+
+export type { AttachableFile } from './attachments';
 
 export type ChatMessage = {
   readonly id: string;
@@ -20,8 +24,6 @@ export type ChatMessage = {
   readonly interrupted: boolean;
   readonly pending?: boolean;
 };
-
-export type AttachableFile = { readonly id: string; readonly name: string; readonly type: string };
 
 type ChatError = {
   readonly message: string;
@@ -133,11 +135,14 @@ export function ChatPanel({
   const [messages, setMessages] = useState<readonly ChatMessage[]>(initialMessages);
   const [input, setInput] = useState('');
   const [capability, setCapability] = useState<IntelligenceCapability>('balanced');
-  const [selectedFiles, setSelectedFiles] = useState<readonly string[]>([]);
+  const [selectedFiles, setSelectedFiles] = useState<readonly AttachableFile[]>([]);
+  const [uploading, setUploading] = useState(false);
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<ChatError | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const controller = useRef<AbortController | null>(null);
   const end = useRef<HTMLDivElement | null>(null);
+  const textarea = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
     end.current?.scrollIntoView({ block: 'end' });
@@ -145,26 +150,25 @@ export function ChatPanel({
 
   useEffect(() => () => controller.current?.abort(), []);
 
-  function toggleFile(id: string) {
-    setSelectedFiles((current) =>
-      current.includes(id)
-        ? current.filter((value) => value !== id)
-        : current.length < INTELLIGENCE_MAX_FILES
-          ? [...current, id]
-          : current,
+  /** Puts transcribed speech into the message box to edit before sending. */
+  function insertText(text: string) {
+    setNotice(null);
+    setInput((current) =>
+      (current.trim() ? `${current.trimEnd()} ${text}` : text).slice(0, INTELLIGENCE_MAX_PROMPT_CHARS),
     );
+    textarea.current?.focus();
   }
 
   async function send() {
     const text = input.trim();
 
-    if (!text || streaming || !canSend) {
+    if (!text || streaming || uploading || !canSend) {
       return;
     }
 
     const userId = `pending-user-${crypto.randomUUID()}`;
     const replyId = `pending-reply-${crypto.randomUUID()}`;
-    const attached = files.filter((file) => selectedFiles.includes(file.id));
+    const attached = selectedFiles.slice(0, INTELLIGENCE_MAX_FILES);
     const abort = new AbortController();
     controller.current = abort;
     let reply = '';
@@ -173,11 +177,12 @@ export function ChatPanel({
     let completed = false;
 
     setError(null);
+    setNotice(null);
     setStreaming(true);
     setInput('');
     setMessages((current) => [
       ...current,
-      { id: userId, role: 'user', text, files: attached, interrupted: false },
+      { id: userId, role: 'user', text, files: attached.map(({ id, name }) => ({ id, name })), interrupted: false },
       { id: replyId, role: 'assistant', text: '', files: [], interrupted: false, pending: true },
     ]);
 
@@ -323,6 +328,7 @@ export function ChatPanel({
             Message
           </label>
           <textarea
+            ref={textarea}
             id="intelligence-message"
             value={input}
             onChange={(event) => setInput(event.target.value)}
@@ -338,32 +344,19 @@ export function ChatPanel({
             </p>
           ) : null}
 
-          {files.length > 0 ? (
-            <details className="border p-3">
-              <summary className="cursor-pointer label-caps text-muted-foreground">
-                Attach files{selectedFiles.length > 0 ? ` (${selectedFiles.length})` : ''}
-              </summary>
-              <fieldset className="mt-3 grid gap-2">
-                <legend className="text-sm text-muted-foreground">
-                  Up to {INTELLIGENCE_MAX_FILES} TXT or CSV files from your Files.
-                </legend>
-                {files.map((file) => (
-                  <label key={file.id} className="flex items-center gap-2 text-sm tracking-normal text-foreground normal-case">
-                    <input
-                      type="checkbox"
-                      checked={selectedFiles.includes(file.id)}
-                      disabled={
-                        !selectedFiles.includes(file.id) && selectedFiles.length >= INTELLIGENCE_MAX_FILES
-                      }
-                      onChange={() => toggleFile(file.id)}
-                      className="size-4 accent-primary"
-                    />
-                    <span className="truncate">{file.name}</span>
-                    <span className="label-caps text-brass-ink">{file.type}</span>
-                  </label>
-                ))}
-              </fieldset>
-            </details>
+          <Attachments
+            files={files}
+            selected={selectedFiles}
+            disabled={streaming}
+            onChange={setSelectedFiles}
+            onUploadingChange={setUploading}
+            onError={setNotice}
+          />
+
+          {notice ? (
+            <p role="alert" className="text-sm text-destructive">
+              {notice}
+            </p>
           ) : null}
 
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -386,18 +379,22 @@ export function ChatPanel({
                 ))}
               </select>
             </label>
-            {streaming ? (
-              <Button type="button" variant="outline" onClick={() => controller.current?.abort()}>
-                Stop
-              </Button>
-            ) : (
-              <Button type="submit" disabled={!input.trim()}>
-                Send
-              </Button>
-            )}
+            <div className="flex items-center gap-2">
+              <VoiceInput disabled={streaming} onText={insertText} onError={setNotice} />
+              {streaming ? (
+                <Button type="button" variant="outline" onClick={() => controller.current?.abort()}>
+                  Stop
+                </Button>
+              ) : (
+                <Button type="submit" disabled={!input.trim() || uploading}>
+                  {uploading ? 'Uploading…' : 'Send'}
+                </Button>
+              )}
+            </div>
           </div>
           <p className="text-xs text-muted-foreground">
-            Enter to send, Shift+Enter for a new line. AI can make mistakes; check important information.
+            Enter to send, Shift+Enter for a new line. Attach PDF, Word, text or image files, or speak with the
+            microphone. AI can make mistakes; check important information.
           </p>
         </form>
       ) : null}

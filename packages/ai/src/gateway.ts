@@ -8,13 +8,17 @@ import { getDb, type ProductCode } from '@aila/db';
 import {
   AI_CAPABILITIES,
   AppError,
+  aiMessageMedia,
   aiMessagesSchema,
+  aiMessageText,
   type AiCapability,
   type AiMessage,
 } from '@aila/validation';
 import { AiError, toAppError, type AiUsage } from './errors';
 import { MODEL_POLICY, modelsFor } from './models';
 import {
+  AI_AUDIO_CHARS,
+  AI_IMAGE_CHARS,
   AI_MAX_INPUT_CHARS,
   AI_TIMEOUTS_MS,
   AI_USAGE_LIMITS,
@@ -113,9 +117,10 @@ async function prepare(
 
   // Authorization and entitlement from the central service.
   const { keys, proAccess } = await requireEntitlement(ctx, request.product, requestId);
-  const policy = MODEL_POLICY[request.capability];
 
-  if (policy.entitlement && !keys.includes(policy.entitlement)) {
+  const required = MODEL_POLICY[request.capability].entitlement;
+
+  if (required && !keys.includes(required)) {
     throw new AppError('ENTITLEMENT_REQUIRED', { reason: 'AI_MODEL_NOT_INCLUDED' });
   }
 
@@ -132,14 +137,35 @@ async function prepare(
   }
 
   const messages = parsed.data;
-  const inputChars = messages.reduce((total, message) => total + message.content.length, 0);
+  const media = messages.reduce(
+    (total, message) => {
+      const counts = aiMessageMedia(message);
+      return { images: total.images + counts.images, audio: total.audio + counts.audio };
+    },
+    { images: 0, audio: 0 },
+  );
 
-  if (inputChars > AI_MAX_INPUT_CHARS[request.capability]) {
+  // Audio only for transcription, and images never with it. Requests with
+  // images go to the vision model, whatever capability was asked for.
+  if (
+    (media.audio > 0 && request.capability !== 'transcribe') ||
+    (request.capability === 'transcribe' && (media.images > 0 || media.audio !== 1))
+  ) {
+    throw invalid();
+  }
+
+  const capability: AiCapability = media.images > 0 ? 'vision' : request.capability;
+  const textChars = messages.reduce((total, message) => total + aiMessageText(message).length, 0);
+
+  if (textChars > AI_MAX_INPUT_CHARS[capability]) {
     throw new AppError('VALIDATION_ERROR', {
       reason: 'AI_CONTEXT_TOO_LARGE',
       message: 'This is too long for the AI. Shorten it or start a new conversation.',
     });
   }
+
+  // Images and audio count against the token allowance too.
+  const inputChars = textChars + media.images * AI_IMAGE_CHARS + media.audio * AI_AUDIO_CHARS;
 
   // Usage limits, counted in Postgres (Redis is not authoritative).
   const plan: AiPlan = proAccess.allowed && proAccess.source === 'TRIAL' ? 'TRIAL' : 'PRO';
@@ -165,11 +191,11 @@ async function prepare(
 
   return {
     product: request.product.toUpperCase() as ProductCode,
-    capability: request.capability,
+    capability,
     messages,
-    models: modelsFor(request.capability),
+    models: modelsFor(capability),
     maxOutputTokens,
-    timeoutMs: AI_TIMEOUTS_MS[policy.operation],
+    timeoutMs: AI_TIMEOUTS_MS[MODEL_POLICY[capability].operation],
     inputChars,
     idempotencyKey,
   };

@@ -14,6 +14,7 @@ import {
   type CreateUploadInput,
 } from '@aila/validation';
 import { head, presignGet, presignPut, readStart, remove } from './client';
+import { DOCUMENT_TYPES, extractText, PLAIN_TEXT_TYPES } from './extract';
 
 /**
  * The shared file service (PLATFORM-FOUNDATION §23-26, DATA-ARCHITECTURE
@@ -370,28 +371,50 @@ export async function deleteFile(
   await cleanUpAccountFiles(ctx);
 }
 
-/** File types whose text can be given to the AI directly. */
-export const TEXT_FILE_TYPES: readonly string[] = ['text/plain', 'text/csv'];
+/** Image types that can be shown to the AI. */
+export const IMAGE_FILE_TYPES: readonly string[] = ['image/png', 'image/jpeg', 'image/webp'];
 
-export type FileText = {
-  readonly id: string;
-  readonly name: string;
-  readonly text: string;
-  /** True when only the start of the file was read. */
-  readonly truncated: boolean;
-};
+/** Types that can be attached to an AI request. */
+export const CONTEXT_FILE_TYPES: readonly string[] = [...DOCUMENT_TYPES, ...IMAGE_FILE_TYPES];
+
+/** Largest image sent to the AI: the provider limit for inline images. */
+export const MAX_CONTEXT_IMAGE_BYTES = 8 * 1024 * 1024;
+
+export type ContextFile =
+  | {
+      readonly kind: 'text';
+      readonly id: string;
+      readonly name: string;
+      readonly text: string;
+      /** True when only part of the text was kept. */
+      readonly truncated: boolean;
+    }
+  | {
+      readonly kind: 'image';
+      readonly id: string;
+      readonly name: string;
+      /** A base64 data URL, built for this request only. */
+      readonly dataUrl: string;
+    }
+  | {
+      readonly kind: 'unreadable';
+      readonly id: string;
+      readonly name: string;
+      readonly reason: 'too_large' | 'no_text' | 'unreadable';
+    };
 
 /**
- * The text of the account's ready TXT or CSV files, for AI context
- * (AC-063). Files are looked up only within the signed-in account; files
- * that are missing, deleted, of another type or another account's are left
- * out. At most `maxBytes` are read from each file.
+ * The account's ready files prepared as AI context (AC-063): document text
+ * (TXT, CSV, PDF, DOCX) capped at `maxChars` per file, and images as
+ * inline data. Files are looked up only within the signed-in account;
+ * missing, deleted, unsupported and other accounts' files are left out.
+ * Nothing extracted here is stored.
  */
-export async function readTextFiles(
+export async function readContextFiles(
   ctx: AccountContext,
   fileIds: readonly string[],
-  maxBytes: number,
-): Promise<FileText[]> {
+  maxChars: number,
+): Promise<ContextFile[]> {
   if (fileIds.length === 0) {
     return [];
   }
@@ -402,26 +425,66 @@ export async function readTextFiles(
       ...accountScope(ctx),
       status: 'READY',
       deletedAt: null,
-      mimeType: { in: [...TEXT_FILE_TYPES] },
+      mimeType: { in: [...CONTEXT_FILE_TYPES] },
     },
-    select: { id: true, name: true, sizeBytes: true, storageKey: true },
+    select: { id: true, name: true, mimeType: true, sizeBytes: true, storageKey: true },
   });
   const byId = new Map(files.map((file) => [file.id, file]));
-  const result: FileText[] = [];
+  const result: ContextFile[] = [];
 
   for (const id of fileIds) {
     const file = byId.get(id);
-
     const size = Number(file?.sizeBytes ?? 0);
 
     if (!file || size <= 0) {
       continue;
     }
 
-    const bytes = await storageCall('readText', () => readStart(file.storageKey, Math.min(size, maxBytes)));
-    // A character cut off at the end of the sample is dropped, not replaced.
-    const text = new TextDecoder('utf-8').decode(bytes, { stream: true });
-    result.push({ id: file.id, name: file.name, text, truncated: size > maxBytes });
+    const base = { id: file.id, name: file.name };
+
+    if (IMAGE_FILE_TYPES.includes(file.mimeType)) {
+      if (size > MAX_CONTEXT_IMAGE_BYTES) {
+        result.push({ ...base, kind: 'unreadable', reason: 'too_large' });
+        continue;
+      }
+
+      const bytes = await storageCall('readImage', () => readStart(file.storageKey, size));
+      result.push({
+        ...base,
+        kind: 'image',
+        dataUrl: `data:${file.mimeType};base64,${Buffer.from(bytes).toString('base64')}`,
+      });
+      continue;
+    }
+
+    // Plain text needs at most 4 bytes per character; documents are read whole.
+    const readBytes = PLAIN_TEXT_TYPES.includes(file.mimeType) ? Math.min(size, maxChars * 4) : size;
+    const bytes = await storageCall('readDocument', () => readStart(file.storageKey, readBytes));
+
+    try {
+      const extracted = await extractText(file.mimeType, bytes, maxChars);
+
+      if (!extracted.text) {
+        // For example a scanned PDF without a text layer.
+        result.push({ ...base, kind: 'unreadable', reason: 'no_text' });
+        continue;
+      }
+
+      result.push({
+        ...base,
+        kind: 'text',
+        text: extracted.text,
+        truncated: extracted.truncated || readBytes < size,
+      });
+    } catch (error) {
+      // Damaged or password-protected documents. Metadata only in logs.
+      console.warn('[storage] Could not read a document', {
+        fileId: file.id,
+        mimeType: file.mimeType,
+        error: error instanceof Error ? error.name : 'UnknownError',
+      });
+      result.push({ ...base, kind: 'unreadable', reason: 'unreadable' });
+    }
   }
 
   return result;
