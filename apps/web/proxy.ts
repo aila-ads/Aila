@@ -1,5 +1,6 @@
-import { NextResponse, type NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { protectRequest } from '@aila/auth/proxy';
+import { contentSecurityPolicy } from './lib/csp';
 
 /**
  * Deny by default (SECURITY-ARCHITECTURE §2.3): every path that is not
@@ -17,6 +18,18 @@ const PUBLIC_PATHS = new Set([
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const csp = contentSecurityPolicy({
+    nonce: btoa(crypto.randomUUID()),
+    storageEndpoint: process.env.STORAGE_ENDPOINT,
+    development: process.env.NODE_ENV === 'development',
+  });
+
+  // Next.js reads the nonce from the request's CSP header and puts it on
+  // the scripts it renders; the browser enforces the response header.
+  const headers = new Headers(request.headers);
+  headers.set('Content-Security-Policy', csp);
+
+  let response: NextResponse;
 
   if (
     PUBLIC_PATHS.has(pathname) ||
@@ -26,11 +39,19 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith('/api/trpc/') ||
     pathname.startsWith('/_next/')
   ) {
-    return NextResponse.next();
+    response = NextResponse.next({ request: { headers } });
+  } else {
+    // Includes /auth/callback, where Neon Auth completes the Google sign-in.
+    // Neon Auth reads only the URL, headers and cookies, and forwards these
+    // headers (with the CSP) to the page. The body is never read here.
+    response = await protectRequest(
+      new NextRequest(request.url, { method: request.method, headers }),
+      '/login',
+    );
   }
 
-  // Includes /auth/callback, where Neon Auth completes the Google sign-in.
-  return protectRequest(request, '/login');
+  response.headers.set('Content-Security-Policy', csp);
+  return response;
 }
 
 export const config = {

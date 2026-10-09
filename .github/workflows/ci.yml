@@ -1,7 +1,8 @@
 name: CI
 
-# Production build check only: install dependencies, generate the Prisma
-# client, and run the production build. No lint, typecheck or test steps.
+# Checks every push and pull request to main: lint, typecheck, unit tests
+# and the production build. None of these steps needs a secret or connects
+# to a database, storage or auth service.
 
 on:
   push:
@@ -18,16 +19,11 @@ concurrency:
 
 jobs:
   build:
-    name: Production build
+    name: Lint, typecheck, test and build
     runs-on: ubuntu-latest
 
-    # Placeholder values so the build does not need real secrets.
-    # Nothing here connects to a real database or Supabase project.
     env:
       NEXT_TELEMETRY_DISABLED: "1"
-      DATABASE_URL: "postgresql://placeholder:placeholder@localhost:5432/aila?schema=public"
-      NEXT_PUBLIC_SUPABASE_URL: "https://placeholder.supabase.co"
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: "placeholder-anon-key"
 
     steps:
       - name: Check out repository
@@ -48,6 +44,15 @@ jobs:
 
       - name: Generate Prisma client
         run: pnpm exec prisma generate
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Unit tests
+        run: pnpm test
 
       - name: Production build
         run: pnpm build
