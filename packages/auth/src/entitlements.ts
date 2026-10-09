@@ -55,19 +55,22 @@ export async function can(
 /**
  * Guard for server-side product code: throws TRIAL_EXPIRED,
  * SUBSCRIPTION_REQUIRED or ENTITLEMENT_REQUIRED when `key` is not available
- * (PLATFORM-FOUNDATION §36).
+ * (PLATFORM-FOUNDATION §36). Returns the resolution it checked, so callers
+ * that need more (such as the AI gateway's usage plan) do not resolve twice.
  */
 export async function requireEntitlement(
   ctx: AccountContext,
   key: EntitlementKey,
   requestId?: string,
-): Promise<void> {
-  const { keys, proAccess } = await resolveEntitlements(ctx, requestId);
-  const denial = entitlementDenial(key, keys, proAccess);
+): Promise<EntitlementResolution> {
+  const resolution = await resolveEntitlements(ctx, requestId);
+  const denial = entitlementDenial(key, resolution.keys, resolution.proAccess);
 
   if (denial) {
     throw new AppError(denial);
   }
+
+  return resolution;
 }
 
 export type EntitlementSummary = {

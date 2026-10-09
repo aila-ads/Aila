@@ -262,7 +262,21 @@ importers:
         specifier: ^5.0.0
         version: 5.9.3
 
-  packages/ai: {}
+  packages/ai:
+    dependencies:
+      '@aila/auth':
+        specifier: workspace:*
+        version: link:../auth
+      '@aila/db':
+        specifier: workspace:*
+        version: link:../db
+      '@aila/validation':
+        specifier: workspace:*
+        version: link:../validation
+    devDependencies:
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
 
   packages/auth:
     dependencies:
