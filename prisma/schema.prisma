@@ -77,6 +77,13 @@ enum UsageType {
   EXPORT
 }
 
+// Outcome of a metered operation (DATABASE-SCHEMA §18).
+enum UsageStatus {
+  SUCCESS
+  FAILURE
+  CANCELLED
+}
+
 enum ProjectStatus {
   ACTIVE
   ARCHIVED
@@ -363,6 +370,9 @@ model UsageRecord {
   quantity Decimal @db.Decimal(20, 6)
   unit     String?
 
+  // What was done, e.g. the AI capability (DATABASE-SCHEMA §18).
+  operation String?
+
   model    String?
   provider String?
 
@@ -376,6 +386,9 @@ model UsageRecord {
   estimatedCost Decimal? @db.Decimal(20, 8)
   currency      String?
 
+  durationMs Int?
+  status     UsageStatus?
+
   metadata Json?
 
   createdAt DateTime @default(now())
@@ -384,6 +397,8 @@ model UsageRecord {
   user    User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([accountId, createdAt])
+  // Per-account usage-limit counts (AI-GATEWAY §14).
+  @@index([accountId, usageType, createdAt])
   @@index([userId, createdAt])
   @@index([product, createdAt])
   @@index([usageType, createdAt])

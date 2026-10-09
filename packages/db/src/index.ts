@@ -7,6 +7,8 @@ export type {
   EntitlementStatus,
   MembershipRole,
   Prisma,
+  ProductCode,
   TrialStatus,
+  UsageStatus,
   UserRole,
 } from '@prisma/client';

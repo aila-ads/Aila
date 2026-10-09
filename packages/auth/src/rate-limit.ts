@@ -43,6 +43,9 @@ export const RATE_LIMITS = {
   apiMutationPerAccount: { scope: 'api', limit: 30, window: '1 m' },
   // File uploads per account (AC-182: upload abuse is controlled).
   fileUploadPerAccount: { scope: 'api', limit: 20, window: '10 m' },
+  // AI requests per account, a burst limit on top of the trial and Pro
+  // usage limits counted in Postgres (AI-GATEWAY §14-15, AC-182).
+  aiRequestPerAccount: { scope: 'api', limit: 10, window: '1 m' },
 } as const satisfies Record<string, Policy>;
 
 export type RateLimitName = keyof typeof RATE_LIMITS;
