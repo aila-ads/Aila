@@ -242,3 +242,69 @@
     @apply my-2;
   }
 }
+
+/* Privacy Policy and Terms of Service (server-rendered, no inline styles). */
+@layer components {
+  .legal-prose {
+    @apply grid gap-4 leading-relaxed;
+  }
+
+  .legal-prose h1 {
+    @apply text-4xl font-medium tracking-[0.02em] sm:text-5xl;
+  }
+
+  .legal-prose section {
+    @apply grid gap-3 pt-4;
+  }
+
+  .legal-prose h2 {
+    @apply scroll-mt-6 text-2xl;
+  }
+
+  .legal-prose h3 {
+    @apply mt-1 text-lg;
+  }
+
+  .legal-prose ul {
+    @apply grid list-disc gap-1.5 pl-6;
+  }
+
+  .legal-prose a {
+    @apply text-primary underline decoration-brass underline-offset-4 hover:decoration-2;
+  }
+
+  .legal-prose address {
+    @apply border-l-2 border-brass pl-3 not-italic;
+  }
+
+  .legal-prose .legal-contents {
+    @apply grid gap-2 border border-border bg-card p-5;
+  }
+
+  .legal-prose .legal-contents h2 {
+    @apply label-caps font-sans text-muted-foreground;
+  }
+
+  .legal-prose .legal-contents ol {
+    @apply list-decimal pl-6 text-sm sm:columns-2 sm:gap-10;
+  }
+
+  .legal-prose .legal-contents li {
+    @apply mb-1 break-inside-avoid;
+  }
+
+  .legal-prose .legal-contents a {
+    @apply no-underline hover:underline;
+  }
+}
+
+/* "By creating an account you agree to…" under the account forms. */
+@layer components {
+  .auth-page .legal-consent {
+    @apply text-center text-xs text-muted-foreground;
+  }
+
+  .auth-page footer {
+    @apply mt-8;
+  }
+}

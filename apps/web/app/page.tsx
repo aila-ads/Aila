@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { SiteFooter } from '../components/legal/site-footer';
 
 export default function HomePage() {
   return (
@@ -11,6 +12,8 @@ export default function HomePage() {
         {' · '}
         <Link href="/signup">Create account</Link>
       </nav>
+
+      <SiteFooter className="mt-12" />
     </main>
   );
 }
