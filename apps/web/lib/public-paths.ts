@@ -17,13 +17,14 @@ export const PUBLIC_PAGES: ReadonlySet<string> = new Set([
 
 /**
  * API routes that authenticate the caller themselves: Neon Auth, the tRPC
- * API and the Aila Intelligence handlers check the session and answer with
- * JSON errors instead of redirects; the payment webhooks verify the
- * provider's signature instead of a session.
+ * API and the Aila Intelligence and Writer handlers check the session and
+ * answer with JSON errors instead of redirects; the payment webhooks verify
+ * the provider's signature instead of a session.
  */
 const SELF_AUTHENTICATING_ROUTES: ReadonlySet<string> = new Set([
   '/api/intelligence/messages',
   '/api/intelligence/transcribe',
+  '/api/writer/assist',
   '/api/webhooks/flutterwave',
   '/api/webhooks/paystack',
   '/api/webhooks/paypal',

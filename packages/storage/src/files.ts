@@ -13,7 +13,7 @@ import {
   resolveFileType,
   type CreateUploadInput,
 } from '@aila/validation';
-import { head, presignGet, presignPut, readStart, remove } from './client';
+import { head, presignGet, presignPut, put, readStart, remove } from './client';
 import { DOCUMENT_TYPES, extractText, PLAIN_TEXT_TYPES } from './extract';
 
 /**
@@ -282,10 +282,14 @@ function toItem(file: {
   };
 }
 
-/** The account's ready files, newest first. Deleted files are never returned. */
+/**
+ * The account's ready files, newest first. Deleted files are never
+ * returned, and neither are files Aila generated (such as Writer exports),
+ * which are listed and removed where they were made.
+ */
 export async function listFiles(ctx: AccountContext): Promise<FileItem[]> {
   const files = await getDb().file.findMany({
-    where: { ...accountScope(ctx), status: 'READY', deletedAt: null },
+    where: { ...accountScope(ctx), status: 'READY', deletedAt: null, source: { not: 'GENERATED' } },
     select: { id: true, name: true, mimeType: true, sizeBytes: true, createdAt: true },
     orderBy: { createdAt: 'desc' },
     take: 200,
@@ -488,4 +492,106 @@ export async function readContextFiles(
   }
 
   return result;
+}
+
+/**
+ * Stores a file the server generated for the account (WRITER §32: "store
+ * the generated file securely"). The object key comes from generated IDs
+ * only; the row is READY only once the object is stored, so a failure
+ * leaves nothing downloadable. Returns the file ID; downloads go through
+ * `getDownloadUrl`, which checks the account and records the access.
+ */
+export async function storeGeneratedFile(
+  ctx: AccountContext,
+  file: { readonly name: string; readonly mimeType: string; readonly bytes: Uint8Array },
+  requestId: string,
+): Promise<string> {
+  const db = getDb();
+  const fileId = randomUUID();
+  const key = storageKey(ctx.account.id, fileId);
+
+  await db.file.create({
+    data: {
+      id: fileId,
+      accountId: ctx.account.id,
+      userId: ctx.user.id,
+      name: file.name,
+      mimeType: file.mimeType,
+      sizeBytes: BigInt(file.bytes.byteLength),
+      storageKey: key,
+      source: 'GENERATED',
+      status: 'UPLOADING',
+    },
+  });
+
+  try {
+    await storageCall('put-generated', () => put(key, file.bytes, file.mimeType, attachmentDisposition(file.name)));
+  } catch (error) {
+    await db.file
+      .update({ where: { id: fileId }, data: { status: 'FAILED', metadata: CLEANUP_PENDING } })
+      .catch(() => undefined);
+    throw error;
+  }
+
+  await db.file.update({ where: { id: fileId }, data: { status: 'READY' } });
+  await recordAuditEvent({
+    action: 'CREATE',
+    result: 'SUCCESS',
+    accountId: ctx.account.id,
+    userId: ctx.user.id,
+    resourceType: RESOURCE,
+    resourceId: fileId,
+    requestId,
+    metadata: { source: 'GENERATED' },
+  });
+
+  return fileId;
+}
+
+/**
+ * Deletes files the server generated for the account, e.g. when a Writer
+ * export or project is deleted: access stops at once, then the objects are
+ * removed; a failed removal is retried by the account cleanup.
+ */
+export async function deleteGeneratedFiles(
+  ctx: AccountContext,
+  fileIds: readonly string[],
+  requestId: string,
+): Promise<void> {
+  if (fileIds.length === 0) {
+    return;
+  }
+
+  const db = getDb();
+  const files = await db.file.findMany({
+    where: { id: { in: [...fileIds] }, ...accountScope(ctx), source: 'GENERATED', status: { not: 'DELETED' } },
+    select: { id: true },
+  });
+
+  if (files.length === 0) {
+    return;
+  }
+
+  await db.$transaction([
+    db.file.updateMany({
+      where: { id: { in: files.map((file) => file.id) }, ...accountScope(ctx) },
+      data: { status: 'DELETED', deletedAt: new Date(), metadata: CLEANUP_PENDING },
+    }),
+    ...files.map((file) =>
+      db.auditLog.create({
+        data: auditLogData({
+          action: 'DELETE',
+          result: 'SUCCESS',
+          accountId: ctx.account.id,
+          userId: ctx.user.id,
+          resourceType: RESOURCE,
+          resourceId: file.id,
+          requestId,
+          metadata: { source: 'GENERATED' },
+        }),
+      }),
+    ),
+  ]);
+
+  await cleanUpAccountFiles(ctx);
 }

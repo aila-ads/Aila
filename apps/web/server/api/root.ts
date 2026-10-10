@@ -2,6 +2,7 @@ import { accountRouter } from './routers/account';
 import { billingRouter } from './routers/billing';
 import { filesRouter } from './routers/files';
 import { intelligenceRouter } from './routers/intelligence';
+import { writerRouter } from './routers/writer';
 import { createCallerFactory, createTRPCRouter } from './trpc';
 
 export const appRouter = createTRPCRouter({
@@ -9,6 +10,7 @@ export const appRouter = createTRPCRouter({
   billing: billingRouter,
   files: filesRouter,
   intelligence: intelligenceRouter,
+  writer: writerRouter,
 });
 
 export type AppRouter = typeof appRouter;

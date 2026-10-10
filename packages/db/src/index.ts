@@ -13,4 +13,11 @@ export type {
   TrialStatus,
   UsageStatus,
   UserRole,
+  WriterDocumentType,
+  WriterExportFormat,
+  WriterExportStatus,
+  WriterNodeKind,
+  WriterNodeStatus,
+  WriterResearchKind,
+  WriterVersionSource,
 } from '@prisma/client';
