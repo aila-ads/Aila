@@ -13,6 +13,7 @@ import {
   aiMessageText,
   type AiCapability,
   type AiMessage,
+  type WebSource,
 } from '@aila/validation';
 import { AiError, toAppError, type AiUsage } from './errors';
 import { MODEL_POLICY, modelsFor } from './models';
@@ -22,16 +23,21 @@ import {
   AI_MAX_INPUT_CHARS,
   AI_TIMEOUTS_MS,
   AI_USAGE_LIMITS,
+  AI_WEB_SEARCH_CHARS,
+  AI_WEB_SEARCH_LIMITS,
+  AI_WEB_SEARCH_MAX_RESULTS,
+  canWebSearch,
   estimateTokens,
   outputTokenBudget,
   retryDelayMs,
   shouldRetry,
   usageWindowStart,
+  webSearchWindowStart,
   type AiPlan,
 } from './policies';
 import { openRouter } from './providers/openrouter';
 import type { ProviderAdapter, ProviderRequest, ProviderStreamEvent } from './providers/types';
-import { getUsageSince, isDuplicateRequest, recordUsage } from './usage';
+import { getUsageSince, getWebSearchesSince, isDuplicateRequest, recordUsage } from './usage';
 
 /**
  * The Aila AI Gateway (AI-GATEWAY §9, AILA-V1-ARCHITECTURE §18): the single
@@ -50,7 +56,18 @@ export type AiRequest = {
   readonly messages: readonly AiMessage[];
   /** Optional key that makes a repeated submission fail instead of running twice. */
   readonly idempotencyKey?: string;
+  /**
+   * Search the web before answering. `required`: fail when the plan's web
+   * search allowance is used up; `if_available`: answer without searching.
+   */
+  readonly webSearch?: 'required' | 'if_available';
 };
+
+/**
+ * Whether the reply used a web search: `not_requested`, `used`, or skipped
+ * because the daily cap (`daily_limit`) or burst limit (`rate_limited`) was hit.
+ */
+export type AiWebSearchOutcome = 'not_requested' | 'used' | 'daily_limit' | 'rate_limited';
 
 export type AiCallOptions = {
   readonly requestId: string;
@@ -63,6 +80,9 @@ export type AiResult = {
   readonly model: string;
   readonly finishReason: string | null;
   readonly usage: AiUsage;
+  readonly webSearch: AiWebSearchOutcome;
+  /** Safe web sources cited by the reply; empty without web search. */
+  readonly sources: readonly WebSource[];
 };
 
 export type AiStreamEvent =
@@ -72,6 +92,8 @@ export type AiStreamEvent =
       readonly model: string;
       readonly finishReason: string | null;
       readonly usage: AiUsage;
+      readonly webSearch: AiWebSearchOutcome;
+      readonly sources: readonly WebSource[];
     };
 
 const provider: ProviderAdapter = openRouter;
@@ -85,6 +107,7 @@ type Prepared = {
   readonly timeoutMs: number;
   readonly inputChars: number;
   readonly idempotencyKey: string | null;
+  readonly webSearch: AiWebSearchOutcome;
 };
 
 const invalid = () => new AppError('VALIDATION_ERROR', { reason: 'AI_INVALID_REQUEST' });
@@ -96,6 +119,17 @@ function usageLimitError(plan: AiPlan): AppError {
       plan === 'TRIAL'
         ? 'You’ve used the AI allowance included in your free trial.'
         : 'You’ve reached your AI usage limit for today. Please try again later.',
+  });
+}
+
+function webSearchLimitError(plan: AiPlan): AppError {
+  const cap = AI_WEB_SEARCH_LIMITS[plan];
+  return new AppError('RATE_LIMITED', {
+    reason: 'AI_WEB_SEARCH_LIMIT_REACHED',
+    message:
+      plan === 'TRIAL'
+        ? `You’ve used the ${cap} web searches included in your free trial for today. Set Web search to Off to keep chatting, or get Aila Pro for more searches.`
+        : `You’ve used today’s ${cap} web searches. Set Web search to Off to keep chatting, or try again tomorrow.`,
   });
 }
 
@@ -169,6 +203,7 @@ async function prepare(
 
   // Usage limits, counted in Postgres (Redis is not authoritative).
   const plan: AiPlan = proAccess.allowed && proAccess.source === 'TRIAL' ? 'TRIAL' : 'PRO';
+  const now = new Date();
   const trial =
     plan === 'TRIAL'
       ? await getDb().trial.findUnique({
@@ -176,8 +211,28 @@ async function prepare(
           select: { startedAt: true },
         })
       : null;
-  const used = await getUsageSince(ctx, usageWindowStart(plan, new Date(), trial?.startedAt ?? null));
-  const maxOutputTokens = outputTokenBudget(AI_USAGE_LIMITS[plan], used, inputChars);
+  const used = await getUsageSince(ctx, usageWindowStart(plan, now, trial?.startedAt ?? null));
+
+  // Web search has its own daily cap, also counted in Postgres.
+  let webSearch: AiWebSearchOutcome = 'not_requested';
+
+  if (request.webSearch) {
+    const searches = await getWebSearchesSince(ctx, webSearchWindowStart(now));
+
+    if (canWebSearch(plan, searches)) {
+      webSearch = 'used';
+    } else if (request.webSearch === 'required') {
+      throw webSearchLimitError(plan);
+    } else {
+      webSearch = 'daily_limit';
+    }
+  }
+
+  const maxOutputTokens = outputTokenBudget(
+    AI_USAGE_LIMITS[plan],
+    used,
+    inputChars + (webSearch === 'used' ? AI_WEB_SEARCH_CHARS : 0),
+  );
 
   if (maxOutputTokens === null) {
     throw usageLimitError(plan);
@@ -189,6 +244,18 @@ async function prepare(
     throw new AppError('CONFLICT', { reason: 'AI_DUPLICATE_REQUEST' });
   }
 
+  // Burst limit for web searches (Upstash; fails closed), checked last so a
+  // refused request does not use up a search.
+  if (webSearch === 'used' && !(await withinRateLimits([['webSearchPerAccount', ctx.account.id]]))) {
+    if (request.webSearch === 'required') {
+      throw new AppError('RATE_LIMITED', {
+        reason: 'AI_RATE_LIMITED',
+        message: 'You’re searching the web very quickly. Wait a minute and try again, or set Web search to Off.',
+      });
+    }
+    webSearch = 'rate_limited';
+  }
+
   return {
     product: request.product.toUpperCase() as ProductCode,
     capability,
@@ -196,8 +263,9 @@ async function prepare(
     models: modelsFor(capability),
     maxOutputTokens,
     timeoutMs: AI_TIMEOUTS_MS[MODEL_POLICY[capability].operation],
-    inputChars,
+    inputChars: inputChars + (webSearch === 'used' ? AI_WEB_SEARCH_CHARS : 0),
     idempotencyKey,
+    webSearch,
   };
 }
 
@@ -269,7 +337,7 @@ function log(
   details: { status: string; code: string | null; model: string; durationMs: number; attempts: number; httpStatus?: number | null },
 ): void {
   // Metadata only: never prompts, responses or keys (AI-GATEWAY §29, §31).
-  const entry = { requestId, capability: prepared.capability, ...details };
+  const entry = { requestId, capability: prepared.capability, webSearch: prepared.webSearch, ...details };
 
   if (details.status === 'FAILURE') {
     console.error('[ai] Request failed', entry);
@@ -306,6 +374,7 @@ export async function generate(
     models: prepared.models,
     messages: prepared.messages,
     maxOutputTokens: prepared.maxOutputTokens,
+    ...(prepared.webSearch === 'used' ? { webSearch: { maxResults: AI_WEB_SEARCH_MAX_RESULTS } } : {}),
     signal,
   };
   const attempts = { count: 0 };
@@ -338,13 +407,21 @@ export async function generate(
       status,
       attempts: attempts.count,
       errorCode: error?.code ?? null,
+      webSearch: prepared.webSearch === 'used',
     });
   };
 
   try {
     const result = await withRetry(() => provider.generate(providerRequest), signal, attempts);
     await finish('SUCCESS', result.model, result.usage, null);
-    return result;
+    return {
+      content: result.content,
+      model: result.model,
+      finishReason: result.finishReason,
+      usage: result.usage,
+      webSearch: prepared.webSearch,
+      sources: prepared.webSearch === 'used' ? result.sources : [],
+    };
   } catch (error) {
     const outcome = classify(error, options.signal, deadline);
     // A cancelled call may still have been billed: record an estimate.
@@ -379,6 +456,7 @@ export async function stream(
     models: prepared.models,
     messages: prepared.messages,
     maxOutputTokens: prepared.maxOutputTokens,
+    ...(prepared.webSearch === 'used' ? { webSearch: { maxResults: AI_WEB_SEARCH_MAX_RESULTS } } : {}),
     signal,
   };
   const attempts = { count: 0 };
@@ -410,6 +488,7 @@ export async function stream(
       status: outcome.status,
       attempts: attempts.count,
       errorCode: outcome.error?.code ?? null,
+      webSearch: prepared.webSearch === 'used',
     });
   };
 
@@ -446,7 +525,14 @@ export async function stream(
         const usage = event.usage ?? estimatedUsage(prepared, outputChars);
         settled = true;
         await finish({ status: 'SUCCESS', error: null }, model, usage);
-        yield { type: 'done', model, finishReason: event.finishReason, usage };
+        yield {
+          type: 'done',
+          model,
+          finishReason: event.finishReason,
+          usage,
+          webSearch: prepared.webSearch,
+          sources: prepared.webSearch === 'used' ? event.sources : [],
+        };
         return;
       }
     } catch (error) {

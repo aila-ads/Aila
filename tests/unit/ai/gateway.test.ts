@@ -392,3 +392,153 @@ describe('stream', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('web search', () => {
+  const QUERY = 'who is the governor of Lagos today';
+  const searchRequest = (mode: 'required' | 'if_available') => ({
+    ...request,
+    messages: [{ role: 'user' as const, content: QUERY }],
+    webSearch: mode,
+  });
+
+  /** Requests so far, and web searches so far (counted with the metadata flag). */
+  function counts({ requests = 0, searches = 0 } = {}) {
+    db.usageRecord.count.mockImplementation(async (args: { where: { metadata?: unknown } }) =>
+      args.where.metadata ? searches : requests,
+    );
+  }
+
+  const sentPlugins = () => JSON.parse(fetchMock.mock.calls[0]![1]!.body as string).plugins;
+
+  function cited(): Response {
+    return Response.json({
+      model: 'deepseek/deepseek-chat-v3.1',
+      choices: [
+        {
+          finish_reason: 'stop',
+          message: {
+            content: 'The governor is … [1]',
+            annotations: [
+              { type: 'url_citation', url_citation: { url: 'https://lagosstate.gov.ng/', title: 'Lagos State' } },
+            ],
+          },
+        },
+      ],
+      usage: { prompt_tokens: 900, completion_tokens: 20, total_tokens: 920, cost: 0.0075 },
+    });
+  }
+
+  it('searches, returns sources and records the search as a flag without the query', async () => {
+    counts({ searches: 49 });
+    fetchMock.mockResolvedValue(cited());
+
+    const result = await generate(ctx, searchRequest('required'), { requestId: 'r' });
+
+    expect(sentPlugins()).toEqual([expect.objectContaining({ id: 'web', engine: 'exa', max_results: 5 })]);
+    expect(result.webSearch).toBe('used');
+    expect(result.sources).toEqual([{ url: 'https://lagosstate.gov.ng/', title: 'Lagos State', domain: 'lagosstate.gov.ng' }]);
+    expect(auth.withinRateLimits).toHaveBeenCalledWith([['webSearchPerAccount', 'acct_1']]);
+
+    const searchCount = db.usageRecord.count.mock.calls.find(([args]) => args.where.metadata)![0].where;
+    expect(searchCount).toMatchObject({
+      accountId: 'acct_1',
+      usageType: 'AI_REQUEST',
+      status: { in: ['SUCCESS', 'CANCELLED'] },
+      metadata: { path: ['webSearch'], equals: true },
+    });
+    expect(Date.now() - searchCount.createdAt.gte.getTime()).toBeGreaterThanOrEqual(24 * 60 * 60 * 1000 - 1000);
+
+    const data = db.usageRecord.create.mock.calls[0]![0].data;
+    expect(data.metadata).toMatchObject({ webSearch: true });
+    expect(data.operation).toBe('balanced');
+    expect(JSON.stringify(data)).not.toContain(QUERY);
+    expect(logged()).not.toContain(QUERY);
+    expect(logged()).toContain('"webSearch":"used"');
+  });
+
+  it('does not search or count when the product did not ask', async () => {
+    counts();
+    fetchMock.mockResolvedValue(completion());
+
+    const result = await generate(ctx, request, { requestId: 'r' });
+
+    expect(sentPlugins()).toBeUndefined();
+    expect(result).toMatchObject({ webSearch: 'not_requested', sources: [] });
+    expect(db.usageRecord.count.mock.calls.some(([args]) => args.where.metadata)).toBe(false);
+    expect(db.usageRecord.create.mock.calls[0]![0].data.metadata.webSearch).toBeUndefined();
+  });
+
+  it('refuses a required search with a friendly message when Pro’s 50 a day are used', async () => {
+    counts({ searches: 50 });
+
+    const error = await generate(ctx, searchRequest('required'), { requestId: 'r' }).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(AppError);
+    expect(error).toMatchObject({ code: 'RATE_LIMITED', reason: 'AI_WEB_SEARCH_LIMIT_REACHED' });
+    expect((error as Error).message).toContain('50 web searches');
+    expect((error as Error).message).toContain('Web search to Off');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('allows the trial 5 searches a day', async () => {
+    auth.requireEntitlement.mockResolvedValue({ keys: ALL_KEYS, proAccess: { allowed: true, source: 'TRIAL' } });
+    counts({ searches: 4 });
+    fetchMock.mockResolvedValue(cited());
+    await expect(generate(ctx, searchRequest('required'), { requestId: 'r' })).resolves.toMatchObject({ webSearch: 'used' });
+
+    fetchMock.mockClear();
+    counts({ searches: 5 });
+    await expect(generate(ctx, searchRequest('required'), { requestId: 'r' })).rejects.toMatchObject({
+      reason: 'AI_WEB_SEARCH_LIMIT_REACHED',
+      message: expect.stringContaining('free trial'),
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('answers without searching in Auto when the daily cap is used up', async () => {
+    counts({ searches: 50 });
+    fetchMock.mockResolvedValue(completion());
+
+    const result = await generate(ctx, searchRequest('if_available'), { requestId: 'r' });
+
+    expect(sentPlugins()).toBeUndefined();
+    expect(result).toMatchObject({ webSearch: 'daily_limit', sources: [] });
+    expect(db.usageRecord.create.mock.calls[0]![0].data.metadata.webSearch).toBeUndefined();
+  });
+
+  it('applies the per-minute web search limit', async () => {
+    counts();
+    auth.withinRateLimits.mockImplementation(async (checks: [string, string][]) => checks[0]![0] !== 'webSearchPerAccount');
+    fetchMock.mockResolvedValue(completion());
+
+    await expect(generate(ctx, searchRequest('required'), { requestId: 'r' })).rejects.toMatchObject({
+      code: 'RATE_LIMITED',
+      reason: 'AI_RATE_LIMITED',
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    const result = await generate(ctx, searchRequest('if_available'), { requestId: 'r' });
+    expect(result.webSearch).toBe('rate_limited');
+    expect(sentPlugins()).toBeUndefined();
+  });
+
+  it('streams sources in the done event', async () => {
+    counts();
+    fetchMock.mockResolvedValue(
+      sse([
+        'data: {"choices":[{"delta":{"content":"Answer [1]","annotations":[{"type":"url_citation","url_citation":{"url":"https://news.example/a","title":"A"}}]},"finish_reason":"stop"}]}\n\n',
+        'data: [DONE]\n\n',
+      ]),
+    );
+
+    const events = [];
+    for await (const event of await stream(ctx, searchRequest('if_available'), { requestId: 'r' })) events.push(event);
+
+    expect(events.at(-1)).toMatchObject({
+      type: 'done',
+      webSearch: 'used',
+      sources: [{ url: 'https://news.example/a', title: 'A', domain: 'news.example' }],
+    });
+    expect(db.usageRecord.create.mock.calls[0]![0].data.metadata).toMatchObject({ webSearch: true });
+  });
+});

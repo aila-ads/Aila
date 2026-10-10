@@ -1,4 +1,4 @@
-import type { AiMessage } from '@aila/validation';
+import type { AiMessage, WebSource } from '@aila/validation';
 import type { AiUsage } from '../errors';
 
 /**
@@ -12,6 +12,8 @@ export type ProviderRequest = {
   readonly models: readonly string[];
   readonly messages: readonly AiMessage[];
   readonly maxOutputTokens: number;
+  /** Search the web once before answering, with at most this many results. */
+  readonly webSearch?: { readonly maxResults: number };
   readonly signal: AbortSignal;
 };
 
@@ -21,6 +23,8 @@ export type ProviderResult = {
   readonly model: string;
   readonly finishReason: string | null;
   readonly usage: AiUsage;
+  /** Safe web sources cited by the reply; empty without web search. */
+  readonly sources: readonly WebSource[];
 };
 
 export type ProviderStreamEvent =
@@ -30,6 +34,7 @@ export type ProviderStreamEvent =
       readonly model: string | null;
       readonly finishReason: string | null;
       readonly usage: AiUsage | null;
+      readonly sources: readonly WebSource[];
     };
 
 export type ProviderAdapter = {

@@ -8,19 +8,20 @@ import { LEGAL } from './legal-facts';
  */
 export function SiteFooter({ className }: { className?: string }) {
   const linkClass =
-    'text-muted-foreground no-underline transition-colors outline-none hover:text-primary focus-visible:ring-[3px] focus-visible:ring-ring/50';
+    'whitespace-nowrap text-muted-foreground no-underline transition-colors outline-none hover:text-primary focus-visible:ring-[3px] focus-visible:ring-ring/50';
 
   return (
     <footer
       className={cn(
-        'flex flex-col items-center gap-2 border-t border-brass/40 pt-4 text-center text-xs text-muted-foreground sm:flex-row sm:justify-between sm:text-left',
+        'flex flex-col items-center gap-x-6 gap-y-2 border-t border-brass/40 pt-4 text-center text-xs text-muted-foreground sm:flex-row sm:flex-wrap sm:justify-between sm:text-left',
         className,
       )}
     >
-      <p className="text-xs">
+      <p className="text-xs whitespace-nowrap">
         © {new Date().getFullYear()} {LEGAL.operator}
       </p>
-      <nav aria-label="Legal" className="flex flex-wrap justify-center gap-x-5 gap-y-1">
+      {/* Each link stays on one line; on narrow screens whole links wrap. */}
+      <nav aria-label="Legal" className="flex max-w-full flex-wrap justify-center gap-x-5 gap-y-1 sm:justify-end">
         <Link href="/privacy" className={linkClass}>
           Privacy Policy
         </Link>

@@ -6,7 +6,10 @@ import {
   AI_RETRY,
   AI_TIMEOUTS_MS,
   AI_USAGE_LIMITS,
+  AI_WEB_SEARCH_LIMITS,
+  canWebSearch,
   MIN_OUTPUT_TOKENS,
+  webSearchWindowStart,
   outputTokenBudget,
   PRO_USAGE_WINDOW_MS,
   retryDelayMs,
@@ -118,5 +121,20 @@ describe('retry policy', () => {
     expect(retryDelayMs(transient, () => 0.999)).toBeLessThan(
       AI_RETRY.baseDelayMs + AI_RETRY.maxJitterMs,
     );
+  });
+});
+
+describe('web search limits', () => {
+  it('allows 5 searches a day on the trial and 50 on Pro', () => {
+    expect(AI_WEB_SEARCH_LIMITS).toEqual({ TRIAL: 5, PRO: 50 });
+    expect(canWebSearch('TRIAL', 4)).toBe(true);
+    expect(canWebSearch('TRIAL', 5)).toBe(false);
+    expect(canWebSearch('PRO', 49)).toBe(true);
+    expect(canWebSearch('PRO', 50)).toBe(false);
+  });
+
+  it('counts over a rolling 24 hours', () => {
+    const now = new Date('2026-10-10T12:00:00Z');
+    expect(webSearchWindowStart(now).toISOString()).toBe('2026-10-09T12:00:00.000Z');
   });
 });

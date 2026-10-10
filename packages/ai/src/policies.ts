@@ -30,6 +30,37 @@ export const AI_USAGE_LIMITS: Readonly<Record<AiPlan, AiUsageLimits>> = {
 
 export const PRO_USAGE_WINDOW_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * Web searches per account per rolling 24 hours. Each search is a paid
+ * call (about $0.007 plus the result tokens), so it has its own cap on top
+ * of the request and token limits.
+ */
+export const AI_WEB_SEARCH_LIMITS: Readonly<Record<AiPlan, number>> = {
+  TRIAL: 5,
+  PRO: 50,
+};
+
+export const WEB_SEARCH_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/** Results requested per search. */
+export const AI_WEB_SEARCH_MAX_RESULTS = 5;
+
+/**
+ * Search results added to the input, counted as characters for the token
+ * budget (five results of up to about 4,000 characters each).
+ */
+export const AI_WEB_SEARCH_CHARS = 20_000;
+
+/** Start of the web search window. */
+export function webSearchWindowStart(now: Date): Date {
+  return new Date(now.getTime() - WEB_SEARCH_WINDOW_MS);
+}
+
+/** Whether another web search fits in the plan's daily cap. */
+export function canWebSearch(plan: AiPlan, searchesSoFar: number): boolean {
+  return searchesSoFar < AI_WEB_SEARCH_LIMITS[plan];
+}
+
 /** A request is refused when fewer output tokens than this would remain. */
 export const MIN_OUTPUT_TOKENS = 256;
 
