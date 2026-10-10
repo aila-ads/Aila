@@ -1,7 +1,9 @@
 import type { ReactNode } from 'react';
+import Link from 'next/link';
 import type { TrialSummary } from '@aila/auth/server';
 import { BillingLink } from '../billing/billing-link';
 import { OrnamentRule } from '../brand/ornament-rule';
+import { LEGAL } from '../legal/legal-facts';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { ChangePasswordForm } from './change-password-form';
 import { PreferencesForm } from './preferences-form';
@@ -76,6 +78,36 @@ export function SettingsView(data: SettingsData) {
 
       <Section id="sessions-heading" title="Signed-in devices">
         <SessionList sessions={data.sessions} />
+      </Section>
+
+      <Section id="privacy-heading" title="Privacy and your data">
+        <div className="grid gap-3 text-sm text-muted-foreground">
+          <p>
+            You can delete conversations and files at any time in Aila. To delete your account
+            or get a copy of your data, email{' '}
+            <a
+              href={`mailto:${LEGAL.email}`}
+              className="text-primary underline decoration-brass underline-offset-4 hover:decoration-2"
+            >
+              {LEGAL.email}
+            </a>{' '}
+            from the address on this account.
+          </p>
+          <p className="flex flex-wrap gap-x-5 gap-y-1">
+            <Link
+              href="/privacy"
+              className="text-primary underline decoration-brass underline-offset-4 hover:decoration-2"
+            >
+              Privacy Policy
+            </Link>
+            <Link
+              href="/terms"
+              className="text-primary underline decoration-brass underline-offset-4 hover:decoration-2"
+            >
+              Terms of Service
+            </Link>
+          </p>
+        </div>
       </Section>
     </div>
   );

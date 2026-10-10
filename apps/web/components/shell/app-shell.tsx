@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { Crest } from '../brand/crest';
 import { Wordmark } from '../brand/wordmark';
+import { SiteFooter } from '../legal/site-footer';
 import { AccountMenu, type ShellUser } from './account-menu';
 import { MobileNav } from './mobile-nav';
 import { NavLinks } from './nav-links';
@@ -38,6 +39,7 @@ export function AppShell({ user, children }: { user: ShellUser | null; children:
         </aside>
         <main id="main" className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-8">
           <div className="mx-auto max-w-5xl">{children}</div>
+          <SiteFooter className="mx-auto mt-16 max-w-5xl" />
         </main>
       </div>
     </div>

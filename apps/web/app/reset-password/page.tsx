@@ -3,6 +3,7 @@ import { ResetPasswordForm } from './reset-password-form';
 import { Crest } from '../../components/brand/crest';
 import { OrnamentRule } from '../../components/brand/ornament-rule';
 import { Wordmark } from '../../components/brand/wordmark';
+import { SiteFooter } from '../../components/legal/site-footer';
 
 export default function ResetPasswordPage() {
   return (
@@ -16,6 +17,7 @@ export default function ResetPasswordPage() {
       <Suspense fallback={null}>
         <ResetPasswordForm />
       </Suspense>
+      <SiteFooter className="sm:flex-col sm:justify-center sm:text-center" />
     </main>
   );
 }

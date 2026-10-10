@@ -1,21 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { protectRequest } from '@aila/auth/proxy';
 import { contentSecurityPolicy } from './lib/csp';
+import { isPublicPath } from './lib/public-paths';
 
 /**
  * Deny by default (SECURITY-ARCHITECTURE §2.3): every path that is not
- * listed here requires a valid Neon Auth session. Pages and handlers also
- * check the session on the server; this proxy is not the only check.
+ * allowed by isPublicPath requires a valid Neon Auth session. Pages and
+ * handlers also check the session on the server; this proxy is not the
+ * only check.
  */
-const PUBLIC_PATHS = new Set([
-  '/',
-  '/login',
-  '/signup',
-  '/verify-email',
-  '/forgot-password',
-  '/reset-password',
-]);
-
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const csp = contentSecurityPolicy({
@@ -31,23 +24,7 @@ export async function proxy(request: NextRequest) {
 
   let response: NextResponse;
 
-  if (
-    PUBLIC_PATHS.has(pathname) ||
-    pathname.startsWith('/api/auth/') ||
-    // The API checks the session itself and answers with JSON errors
-    // instead of redirects.
-    pathname.startsWith('/api/trpc/') ||
-    // Aila Intelligence streaming: the handler checks the session itself.
-    pathname === '/api/intelligence/messages' ||
-    // Aila Intelligence voice input: the handler checks the session itself.
-    pathname === '/api/intelligence/transcribe' ||
-    // Payment providers call these without a session; each handler
-    // authenticates the provider's signature instead.
-    pathname === '/api/webhooks/flutterwave' ||
-    pathname === '/api/webhooks/paystack' ||
-    pathname === '/api/webhooks/paypal' ||
-    pathname.startsWith('/_next/')
-  ) {
+  if (isPublicPath(pathname)) {
     response = NextResponse.next({ request: { headers } });
   } else {
     // Includes /auth/callback, where Neon Auth completes the Google sign-in.
