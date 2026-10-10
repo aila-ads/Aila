@@ -24,6 +24,22 @@ export async function getUsageSince(ctx: AccountContext, since: Date): Promise<U
   return { requests, tokens: tokens._sum.totalTokens ?? 0 };
 }
 
+/**
+ * Web searches since `since`: AI requests recorded with the `webSearch`
+ * flag. Failed requests are not counted, as for the request limit.
+ */
+export async function getWebSearchesSince(ctx: AccountContext, since: Date): Promise<number> {
+  return getDb().usageRecord.count({
+    where: {
+      ...accountScope(ctx),
+      usageType: 'AI_REQUEST',
+      createdAt: { gte: since },
+      status: { in: ['SUCCESS', 'CANCELLED'] },
+      metadata: { path: ['webSearch'], equals: true },
+    },
+  });
+}
+
 /** Whether a successful request with this idempotency key was already recorded. */
 export async function isDuplicateRequest(
   ctx: AccountContext,
@@ -49,6 +65,8 @@ export type UsageEntry = {
   readonly status: UsageStatus;
   readonly attempts: number;
   readonly errorCode: string | null;
+  /** The request included a web search (counted for the web search cap). */
+  readonly webSearch?: boolean;
 };
 
 /**
@@ -84,6 +102,8 @@ export async function recordUsage(ctx: AccountContext, entry: UsageEntry): Promi
           attempts: entry.attempts,
           usageEstimated: usage?.estimated ?? true,
           ...(entry.errorCode ? { errorCode: entry.errorCode } : {}),
+          // Only a flag: the search query is never stored or logged.
+          ...(entry.webSearch ? { webSearch: true } : {}),
         },
       },
     });

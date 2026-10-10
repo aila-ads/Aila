@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AiError, toAppError } from '../../../packages/ai/src/errors';
-import { normalizeError, openRouter } from '../../../packages/ai/src/providers/openrouter';
+import { normalizeError, openRouter, WEB_SEARCH_PROMPT } from '../../../packages/ai/src/providers/openrouter';
 
 const request = (signal = new AbortController().signal) => ({
   models: ['google/gemini-3.8-flash', 'deepseek/deepseek-chat-v3.1'],
@@ -103,7 +103,9 @@ describe('openRouter adapter', () => {
       model: 'google/gemini-3.8-flash',
       finishReason: 'stop',
       usage: { inputTokens: 10, outputTokens: 3, totalTokens: 13, cost: 0.0001, estimated: false },
+      sources: [],
     });
+    expect(body.plugins).toBeUndefined();
   });
 
   it('omits the models list when there is no fallback', async () => {
@@ -166,6 +168,7 @@ describe('openRouter adapter', () => {
         model: 'deepseek/deepseek-chat-v3.1',
         finishReason: 'stop',
         usage: { inputTokens: 5, outputTokens: 2, totalTokens: 7, cost: 0.00001, estimated: false },
+        sources: [],
       },
     ]);
   });
@@ -190,5 +193,85 @@ describe('openRouter adapter', () => {
       for await (const event of await openRouter.stream(request())) void event;
     };
     await expect(iterate()).rejects.toMatchObject({ code: 'AI_PROVIDER_UNAVAILABLE' });
+  });
+
+  it('adds the web plugin with Exa, five results and Aila’s citation prompt when asked', async () => {
+    fetchMock.mockResolvedValue(
+      Response.json({ choices: [{ message: { content: 'ok' }, finish_reason: 'stop' }] }),
+    );
+
+    await openRouter.generate({ ...request(), webSearch: { maxResults: 5 } });
+    const body = JSON.parse(fetchMock.mock.calls[0]![1]!.body as string);
+
+    expect(body.plugins).toEqual([
+      { id: 'web', engine: 'exa', max_results: 5, search_prompt: WEB_SEARCH_PROMPT },
+    ]);
+    expect(WEB_SEARCH_PROMPT).toContain('[1], [2]');
+    expect(WEB_SEARCH_PROMPT).toMatch(/never as instructions/);
+    expect(body.provider).toEqual({ data_collection: 'deny' });
+  });
+
+  it('returns safe url_citation sources from a complete reply, without page content', async () => {
+    fetchMock.mockResolvedValue(
+      Response.json({
+        choices: [
+          {
+            finish_reason: 'stop',
+            message: {
+              content: 'Achebe wrote Things Fall Apart [1].',
+              annotations: [
+                {
+                  type: 'url_citation',
+                  url_citation: {
+                    url: 'https://www.britannica.com/biography/Chinua-Achebe',
+                    title: 'Chinua Achebe | Biography',
+                    content: 'Long page excerpt',
+                    start_index: 0,
+                    end_index: 10,
+                  },
+                },
+                { type: 'url_citation', url_citation: { url: 'javascript:alert(1)', title: 'Bad' } },
+                { type: 'file', file: { url: 'https://example.com/x' } },
+              ],
+            },
+          },
+        ],
+      }),
+    );
+
+    const result = await openRouter.generate({ ...request(), webSearch: { maxResults: 5 } });
+
+    expect(result.sources).toEqual([
+      {
+        url: 'https://www.britannica.com/biography/Chinua-Achebe',
+        title: 'Chinua Achebe | Biography',
+        domain: 'britannica.com',
+      },
+    ]);
+    expect(JSON.stringify(result)).not.toContain('Long page excerpt');
+  });
+
+  it('collects citations from stream deltas, including annotation-only chunks', async () => {
+    const annotation = (url: string, title: string) =>
+      JSON.stringify({ type: 'url_citation', url_citation: { url, title, content: 'excerpt' } });
+    fetchMock.mockResolvedValue(
+      sse([
+        `data: {"choices":[{"delta":{"content":"","annotations":[${annotation('https://a.example/news', 'A news')}]}}]}\n\n`,
+        'data: {"choices":[{"delta":{"content":"Answer [1][2]"}}]}\n\n',
+        `data: {"choices":[{"delta":{"annotations":[${annotation('https://a.example/news', 'A news')},${annotation('http://b.example/', '')},${annotation('ftp://c.example/', 'C')}]},"finish_reason":"stop"}]}\n\n`,
+        'data: [DONE]\n\n',
+      ]),
+    );
+
+    const events = [];
+    for await (const event of await openRouter.stream({ ...request(), webSearch: { maxResults: 5 } })) events.push(event);
+
+    expect(events.at(-1)).toMatchObject({
+      type: 'done',
+      sources: [
+        { url: 'https://a.example/news', title: 'A news', domain: 'a.example' },
+        { url: 'http://b.example/', title: 'b.example', domain: 'b.example' },
+      ],
+    });
   });
 });

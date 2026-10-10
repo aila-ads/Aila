@@ -10,6 +10,7 @@ export {
   type AiRequest,
   type AiResult,
   type AiStreamEvent,
+  type AiWebSearchOutcome,
 } from './gateway';
 export { AI_ERROR_CODES, type AiErrorCode, type AiUsage } from './errors';
-export { AI_USAGE_LIMITS, type AiPlan, type AiUsageLimits } from './policies';
+export { AI_USAGE_LIMITS, AI_WEB_SEARCH_LIMITS, type AiPlan, type AiUsageLimits } from './policies';

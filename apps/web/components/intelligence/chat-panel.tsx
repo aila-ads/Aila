@@ -7,11 +7,14 @@ import {
   INTELLIGENCE_MAX_FILES,
   INTELLIGENCE_MAX_PROMPT_CHARS,
   type IntelligenceCapability,
+  type IntelligenceWebSearchMode,
+  type WebSource,
 } from '@aila/validation';
 import { cn } from '../../lib/utils';
 import { Button } from '../ui/button';
 import { Attachments, type AttachableFile } from './attachments';
 import { AssistantMarkdown } from './markdown';
+import { Sources } from './sources';
 import { VoiceInput } from './voice-input';
 
 export type { AttachableFile } from './attachments';
@@ -23,6 +26,10 @@ export type ChatMessage = {
   readonly files: readonly { readonly id: string; readonly name: string }[];
   readonly interrupted: boolean;
   readonly pending?: boolean;
+  /** Web sources the reply cited. */
+  readonly sources?: readonly WebSource[];
+  /** Shown under the reply, e.g. when a wanted web search was skipped. */
+  readonly note?: string;
 };
 
 type ChatError = {
@@ -36,6 +43,19 @@ const CAPABILITY_OPTIONS: ReadonlyArray<{ value: IntelligenceCapability; label: 
   { value: 'fast', label: 'Fast' },
   { value: 'reasoning', label: 'Deep reasoning' },
 ];
+
+const WEB_SEARCH_OPTIONS: ReadonlyArray<{ value: IntelligenceWebSearchMode; label: string }> = [
+  { value: 'auto', label: 'Auto' },
+  { value: 'on', label: 'On' },
+  { value: 'off', label: 'Off' },
+];
+
+type WebSearchOutcome = 'not_requested' | 'used' | 'daily_limit' | 'rate_limited';
+
+const WEB_SEARCH_NOTES: Partial<Record<WebSearchOutcome, string>> = {
+  daily_limit: 'You’ve used today’s web searches, so Aila answered without searching the web.',
+  rate_limited: 'Web search is busy right now, so Aila answered without searching the web.',
+};
 
 const FALLBACK: ChatError = {
   message: 'Something went wrong. Please try again.',
@@ -81,7 +101,7 @@ async function errorFrom(response: Response): Promise<ChatError> {
 type StreamEvent =
   | { type: 'start'; conversationId: string; title: string }
   | { type: 'text'; text: string }
-  | { type: 'done'; messageId: string }
+  | { type: 'done'; messageId: string; webSearch?: WebSearchOutcome; sources?: WebSource[] }
   | { type: 'error'; appCode: string; reason: string | null; message: string };
 
 async function* readEvents(body: ReadableStream<Uint8Array>): AsyncGenerator<StreamEvent> {
@@ -135,6 +155,7 @@ export function ChatPanel({
   const [messages, setMessages] = useState<readonly ChatMessage[]>(initialMessages);
   const [input, setInput] = useState('');
   const [capability, setCapability] = useState<IntelligenceCapability>('balanced');
+  const [webSearch, setWebSearch] = useState<IntelligenceWebSearchMode>('auto');
   const [selectedFiles, setSelectedFiles] = useState<readonly AttachableFile[]>([]);
   const [uploading, setUploading] = useState(false);
   const [streaming, setStreaming] = useState(false);
@@ -197,6 +218,7 @@ export function ChatPanel({
           ...(conversationId ? { conversationId } : {}),
           content: text,
           capability,
+          webSearch,
           fileIds: attached.map((file) => file.id),
           requestKey: crypto.randomUUID(),
         }),
@@ -214,7 +236,12 @@ export function ChatPanel({
             updateReply({ text: reply });
           } else if (event.type === 'done') {
             completed = true;
-            updateReply({ id: event.messageId, pending: false });
+            updateReply({
+              id: event.messageId,
+              pending: false,
+              sources: event.sources ?? [],
+              ...(event.webSearch && WEB_SEARCH_NOTES[event.webSearch] ? { note: WEB_SEARCH_NOTES[event.webSearch] } : {}),
+            });
           } else {
             failure = { message: event.message, appCode: event.appCode, reason: event.reason };
           }
@@ -302,6 +329,10 @@ export function ChatPanel({
                   Attached: {message.files.map((file) => file.name).join(', ')}
                 </p>
               ) : null}
+              {message.role === 'assistant' && message.sources && message.sources.length > 0 ? (
+                <Sources sources={message.sources} />
+              ) : null}
+              {message.note ? <p className="text-sm text-muted-foreground">{message.note}</p> : null}
               {message.interrupted ? (
                 <p className="text-sm text-muted-foreground">This reply was interrupted.</p>
               ) : null}
@@ -360,25 +391,42 @@ export function ChatPanel({
           ) : null}
 
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <label className="flex items-center gap-2">
-              Mode
-              <select
-                value={capability}
-                onChange={(event) => setCapability(event.target.value as IntelligenceCapability)}
-                className="w-auto tracking-normal text-foreground normal-case"
-              >
-                {CAPABILITY_OPTIONS.map((option) => (
-                  <option
-                    key={option.value}
-                    value={option.value}
-                    disabled={option.value === 'reasoning' && !advancedModels}
-                  >
-                    {option.label}
-                    {option.value === 'reasoning' && !advancedModels ? ' (not in your plan)' : ''}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+              <label className="flex items-center gap-2">
+                Mode
+                <select
+                  value={capability}
+                  onChange={(event) => setCapability(event.target.value as IntelligenceCapability)}
+                  className="w-auto tracking-normal text-foreground normal-case"
+                >
+                  {CAPABILITY_OPTIONS.map((option) => (
+                    <option
+                      key={option.value}
+                      value={option.value}
+                      disabled={option.value === 'reasoning' && !advancedModels}
+                    >
+                      {option.label}
+                      {option.value === 'reasoning' && !advancedModels ? ' (not in your plan)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex items-center gap-2 whitespace-nowrap">
+                Web search
+                <select
+                  value={webSearch}
+                  onChange={(event) => setWebSearch(event.target.value as IntelligenceWebSearchMode)}
+                  aria-describedby="intelligence-web-search-help"
+                  className="w-auto tracking-normal text-foreground normal-case"
+                >
+                  {WEB_SEARCH_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
             <div className="flex items-center gap-2">
               <VoiceInput disabled={streaming} onText={insertText} onError={setNotice} />
               {streaming ? (
@@ -394,7 +442,9 @@ export function ChatPanel({
           </div>
           <p className="text-xs text-muted-foreground">
             Enter to send, Shift+Enter for a new line. Attach PDF, Word, text or image files, or speak with the
-            microphone. AI can make mistakes; check important information.
+            microphone. <span id="intelligence-web-search-help">Web search on Auto looks things up only when your
+            message needs fresh information; On always searches.</span> AI can make mistakes; check important
+            information.
           </p>
         </form>
       ) : null}

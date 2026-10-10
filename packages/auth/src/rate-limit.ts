@@ -46,6 +46,9 @@ export const RATE_LIMITS = {
   // AI requests per account, a burst limit on top of the trial and Pro
   // usage limits counted in Postgres (AI-GATEWAY §14-15, AC-182).
   aiRequestPerAccount: { scope: 'api', limit: 10, window: '1 m' },
+  // Web searches per account, a burst limit on top of the daily web
+  // search caps counted in Postgres.
+  webSearchPerAccount: { scope: 'api', limit: 5, window: '1 m' },
   // Billing actions per account: checkout, payment confirmation and
   // cancellation (SECURITY-ARCHITECTURE §26).
   billingPerAccount: { scope: 'api', limit: 10, window: '10 m' },

@@ -5,17 +5,20 @@ import {
   requireEntitlement,
   type AccountContext,
 } from '@aila/auth/server';
-import { stream, type AiStreamEvent } from '@aila/ai';
+import { stream, type AiStreamEvent, type AiWebSearchOutcome } from '@aila/ai';
 import { getDb, type Prisma } from '@aila/db';
 import { MAX_CONTEXT_IMAGE_BYTES, readContextFiles, type ContextFile } from '@aila/storage';
 import {
   AppError,
   isAppError,
+  sanitizeWebSources,
   titleFromPrompt,
   type AiMessage,
   type SendMessageInput,
+  type WebSource,
 } from '@aila/validation';
 import { SYSTEM_PROMPT } from './system-prompt';
+import { webSearchRequest } from './web-search';
 
 /**
  * Aila Intelligence (AILA-V1-SCOPE §7, PRODUCT-SPEC §10, §18,
@@ -55,6 +58,8 @@ type StoredFile = { readonly id: string; readonly name: string };
 type MessageMetadata = {
   readonly files?: readonly StoredFile[];
   readonly status?: 'complete' | 'interrupted';
+  /** Web sources cited by a reply, checked again when read. */
+  readonly sources?: readonly WebSource[];
 };
 
 function textOf(content: Prisma.JsonValue): string {
@@ -77,7 +82,7 @@ function metadataOf(metadata: Prisma.JsonValue | null): MessageMetadata {
       )
     : [];
   const status = metadata.status === 'interrupted' ? 'interrupted' : 'complete';
-  return { files, status };
+  return { files, status, sources: sanitizeWebSources(metadata.sources) };
 }
 
 /** Active Intelligence conversations of the signed-in account. */
@@ -114,6 +119,8 @@ export type ConversationMessage = {
   readonly files: readonly StoredFile[];
   /** The reply stopped before it was finished (AC-250). */
   readonly interrupted: boolean;
+  /** Web sources the reply cited, numbered as in the text. */
+  readonly sources: readonly WebSource[];
 };
 
 export type ConversationDetail = ConversationSummary & {
@@ -156,6 +163,7 @@ export async function getConversation(
         text: textOf(message.content),
         files: metadata.files ?? [],
         interrupted: metadata.status === 'interrupted',
+        sources: message.role === 'USER' ? [] : (metadata.sources ?? []),
       };
     }),
   };
@@ -346,7 +354,13 @@ function attachmentError(file: Extract<ContextFile, { kind: 'unreadable' }> | un
 export type TurnEvent =
   | { readonly type: 'start'; readonly conversationId: string; readonly title: string }
   | { readonly type: 'text'; readonly text: string }
-  | { readonly type: 'done'; readonly messageId: string }
+  | {
+      readonly type: 'done';
+      readonly messageId: string;
+      /** Whether the reply searched the web, or why a wanted search was skipped. */
+      readonly webSearch: AiWebSearchOutcome;
+      readonly sources: readonly WebSource[];
+    }
   | {
       readonly type: 'error';
       readonly appCode: string;
@@ -425,6 +439,9 @@ export async function sendMessage(
   const attached = input.fileIds.map((id) => files.find((file) => file.id === id));
 
   const prompt = input.content.trim();
+  // Names already discussed or attached don't need a search on their own.
+  const context = [...history.map((message) => message.text), ...files.map((file) => file.name)].join('\n');
+  const webSearch = webSearchRequest(input.webSearch, prompt, { context });
   const events = await stream(
     ctx,
     {
@@ -432,6 +449,7 @@ export async function sendMessage(
       capability: input.capability,
       messages: buildMessages(history, files, prompt),
       idempotencyKey: `intelligence:${input.requestKey}`,
+      ...(webSearch ? { webSearch } : {}),
     },
     { requestId, signal },
   );
@@ -593,6 +611,8 @@ export async function sendMessage(
                 status: 'complete',
                 capability: input.capability,
                 finishReason: event.finishReason,
+                ...(event.webSearch === 'used' ? { webSearch: true } : {}),
+                ...(event.sources.length > 0 ? { sources: event.sources.map((source) => ({ ...source })) } : {}),
               },
             },
             select: { id: true },
@@ -606,7 +626,7 @@ export async function sendMessage(
           return;
         }
 
-        yield { type: 'done', messageId: message.id };
+        yield { type: 'done', messageId: message.id, webSearch: event.webSearch, sources: event.sources };
         return;
       }
     } catch (error) {

@@ -51,7 +51,16 @@ const ctx = {
 const KEY = '0b4f2a52-6c1e-4d4b-9a3e-2f1d6c7b8a90';
 const usage = { inputTokens: 12, outputTokens: 4, totalTokens: 16, cost: null, estimated: false };
 
-type Event = { type: 'text'; text: string } | { type: 'done'; model: string; finishReason: string | null; usage: typeof usage };
+type Event =
+  | { type: 'text'; text: string }
+  | {
+      type: 'done';
+      model: string;
+      finishReason: string | null;
+      usage: typeof usage;
+      webSearch: 'not_requested' | 'used' | 'daily_limit' | 'rate_limited';
+      sources: { url: string; title: string; domain: string }[];
+    };
 
 /** A gateway stream that yields the given events, then optionally fails. */
 function gatewayStream(events: Event[], failWith?: unknown) {
@@ -84,7 +93,7 @@ async function collect(generator: AsyncGenerator<unknown>) {
 function send(overrides: Record<string, unknown> = {}) {
   return service.sendMessage(
     ctx,
-    { content: 'Plan my launch', capability: 'balanced', fileIds: [], requestKey: KEY, ...overrides },
+    { content: 'Plan my launch', capability: 'balanced', webSearch: 'auto', fileIds: [], requestKey: KEY, ...overrides },
     { requestId: 'req_1' },
   );
 }
@@ -127,8 +136,8 @@ describe('conversation history (AC-060, AC-062)', () => {
     expect(query.where).toMatchObject({ id: 'c1', accountId: 'acct_1', status: 'ACTIVE', deletedAt: null });
     expect(query.select.messages.where).toEqual({ role: { in: ['USER', 'ASSISTANT'] } });
     expect(conversation.messages).toEqual([
-      { id: 'm1', role: 'user', text: 'Hi', files: [{ id: 'f1', name: 'a.txt' }], interrupted: false },
-      { id: 'm2', role: 'assistant', text: 'Partial', files: [], interrupted: true },
+      { id: 'm1', role: 'user', text: 'Hi', files: [{ id: 'f1', name: 'a.txt' }], interrupted: false, sources: [] },
+      { id: 'm2', role: 'assistant', text: 'Partial', files: [], interrupted: true, sources: [] },
     ]);
   });
 
@@ -183,7 +192,7 @@ describe('sendMessage (AC-061, AC-250)', () => {
     const { iterable } = gatewayStream([
       { type: 'text', text: 'Step ' },
       { type: 'text', text: 'one' },
-      { type: 'done', model: 'deepseek/deepseek-chat-v3.1', finishReason: 'stop', usage },
+      { type: 'done', model: 'deepseek/deepseek-chat-v3.1', finishReason: 'stop', usage, webSearch: 'not_requested' as const, sources: [] },
     ]);
     ai.stream.mockResolvedValue(iterable);
 
@@ -209,7 +218,7 @@ describe('sendMessage (AC-061, AC-250)', () => {
       { type: 'start', conversationId: 'conv_new', title: 'Plan my launch' },
       { type: 'text', text: 'Step ' },
       { type: 'text', text: 'one' },
-      { type: 'done', messageId: 'msg_reply' },
+      { type: 'done', messageId: 'msg_reply', webSearch: 'not_requested', sources: [] },
     ]);
   });
 
@@ -228,7 +237,7 @@ describe('sendMessage (AC-061, AC-250)', () => {
         { role: 'USER', content: { text: 'Question 1' }, metadata: null },
       ],
     });
-    ai.stream.mockResolvedValue(gatewayStream([{ type: 'done', model: 'm', finishReason: 'stop', usage }]).iterable);
+    ai.stream.mockResolvedValue(gatewayStream([{ type: 'done', model: 'm', finishReason: 'stop', usage, webSearch: 'not_requested' as const, sources: [] }]).iterable);
     await send({ conversationId: 'c1' });
     expect(ai.stream.mock.calls[0]![1].messages.slice(1)).toEqual([
       { role: 'user', content: 'Question 1' },
@@ -238,7 +247,7 @@ describe('sendMessage (AC-061, AC-250)', () => {
   });
 
   it('sends Aila’s identity as the first system message', async () => {
-    ai.stream.mockResolvedValue(gatewayStream([{ type: 'done', model: 'm', finishReason: 'stop', usage }]).iterable);
+    ai.stream.mockResolvedValue(gatewayStream([{ type: 'done', model: 'm', finishReason: 'stop', usage, webSearch: 'not_requested' as const, sources: [] }]).iterable);
     await send();
     const [first] = ai.stream.mock.calls[0]![1].messages;
     expect(first).toEqual({ role: 'system', content: service.SYSTEM_PROMPT });
@@ -250,7 +259,7 @@ describe('sendMessage (AC-061, AC-250)', () => {
 
   it('attaches only the account’s own text files, as data', async () => {
     storage.readContextFiles.mockResolvedValue([{ kind: 'text', id: 'f1', name: 'notes.txt', text: 'Revenue 10', truncated: false }]);
-    ai.stream.mockResolvedValue(gatewayStream([{ type: 'done', model: 'm', finishReason: 'stop', usage }]).iterable);
+    ai.stream.mockResolvedValue(gatewayStream([{ type: 'done', model: 'm', finishReason: 'stop', usage, webSearch: 'not_requested' as const, sources: [] }]).iterable);
     await collect(await send({ fileIds: ['f1'] }));
     expect(storage.readContextFiles).toHaveBeenCalledWith(ctx, ['f1'], expect.any(Number));
     const context = ai.stream.mock.calls[0]![1].messages[1];
@@ -332,5 +341,70 @@ describe('sendMessage (AC-061, AC-250)', () => {
       'Now',
     );
     expect(trimmed).toHaveLength(3);
+  });
+
+  it('asks the gateway to search when Web search is On or Auto finds a need, and never when Off', async () => {
+    const done = () =>
+      gatewayStream([{ type: 'done', model: 'm', finishReason: 'stop', usage, webSearch: 'not_requested' as const, sources: [] }]).iterable;
+
+    ai.stream.mockResolvedValue(done());
+    await collect(await send({ webSearch: 'on', content: 'Write a poem' }));
+    expect(ai.stream.mock.calls[0]![1].webSearch).toBe('required');
+
+    ai.stream.mockResolvedValue(done());
+    await collect(await send({ webSearch: 'auto', content: 'What is the latest news today?' }));
+    expect(ai.stream.mock.calls[1]![1].webSearch).toBe('if_available');
+
+    ai.stream.mockResolvedValue(done());
+    await collect(await send({ webSearch: 'off', content: 'What is the latest news today?' }));
+    expect(ai.stream.mock.calls[2]![1]).not.toHaveProperty('webSearch');
+  });
+
+  it('stores the cited sources with the reply and sends them in the done event', async () => {
+    const sources = [{ url: 'https://news.example/a', title: 'A', domain: 'news.example' }];
+    ai.stream.mockResolvedValue(
+      gatewayStream([
+        { type: 'text', text: 'Answer [1]' },
+        { type: 'done', model: 'm', finishReason: 'stop', usage, webSearch: 'used', sources },
+      ]).iterable,
+    );
+
+    const events = await collect(await send({ webSearch: 'on' }));
+
+    expect(db.message.create.mock.calls[1]![0].data.metadata).toMatchObject({ webSearch: true, sources });
+    expect(events.at(-1)).toEqual({ type: 'done', messageId: 'msg_reply', webSearch: 'used', sources });
+  });
+
+  it('shows stored sources in history, dropping any that are not safe links', async () => {
+    db.conversation.findFirst.mockResolvedValue({
+      id: 'c1',
+      title: 'News',
+      updatedAt: new Date(),
+      messages: [
+        {
+          id: 'm2',
+          role: 'ASSISTANT',
+          content: { text: 'Answer [1]' },
+          metadata: {
+            status: 'complete',
+            sources: [
+              { url: 'https://news.example/a', title: 'A', domain: 'news.example' },
+              { url: 'javascript:alert(1)', title: 'Bad', domain: 'x' },
+            ],
+          },
+        },
+      ],
+    });
+
+    const conversation = await service.getConversation(ctx, 'c1');
+
+    expect(conversation.messages[0]!.sources).toEqual([{ url: 'https://news.example/a', title: 'A', domain: 'news.example' }]);
+  });
+
+  it('tells Aila how to handle web search in its instructions', () => {
+    expect(service.SYSTEM_PROMPT).toContain('cite the sources inline as [1], [2]');
+    expect(service.SYSTEM_PROMPT).toContain('never claim to have searched');
+    expect(service.SYSTEM_PROMPT).toContain('set Web search to On');
+    expect(service.SYSTEM_PROMPT).not.toMatch(/cannot browse/i);
   });
 });

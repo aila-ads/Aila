@@ -9,6 +9,13 @@ import { z } from 'zod';
 export const INTELLIGENCE_CAPABILITIES = ['fast', 'balanced', 'reasoning'] as const;
 export type IntelligenceCapability = (typeof INTELLIGENCE_CAPABILITIES)[number];
 
+/**
+ * Web search setting in the message box: Auto lets the server decide from
+ * the message, On always searches, Off never does.
+ */
+export const INTELLIGENCE_WEB_SEARCH_MODES = ['auto', 'on', 'off'] as const;
+export type IntelligenceWebSearchMode = (typeof INTELLIGENCE_WEB_SEARCH_MODES)[number];
+
 /** Longest message a person can send. */
 export const INTELLIGENCE_MAX_PROMPT_CHARS = 20_000;
 /** Longest conversation title. */
@@ -55,6 +62,7 @@ export const sendMessageSchema = z.strictObject({
     })
     .refine((value) => value.trim().length > 0, { error: 'Write a message first.' }),
   capability: z.enum(INTELLIGENCE_CAPABILITIES),
+  webSearch: z.enum(INTELLIGENCE_WEB_SEARCH_MODES).default('auto'),
   fileIds: z
     .array(z.string().regex(/^[A-Za-z0-9-]{1,64}$/, { error: 'We could not find that file.' }))
     .max(INTELLIGENCE_MAX_FILES, { error: `Attach up to ${INTELLIGENCE_MAX_FILES} files.` })
