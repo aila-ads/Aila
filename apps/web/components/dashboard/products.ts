@@ -20,7 +20,7 @@ export const PRODUCTS: ReadonlyArray<{
     key: 'writer',
     name: 'Aila Writer',
     purpose: 'A long-form writing workspace for substantial documents.',
-    href: null,
+    href: '/writer',
   },
   {
     key: 'translate',

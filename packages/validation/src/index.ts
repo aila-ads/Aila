@@ -10,3 +10,4 @@ export * from './account';
 export * from './errors';
 export * from './files';
 export * from './intelligence';
+export * from './writer';

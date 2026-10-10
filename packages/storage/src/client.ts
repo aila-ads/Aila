@@ -122,3 +122,26 @@ export async function remove(key: string): Promise<void> {
   const { client, bucket } = storage();
   await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
 }
+
+/**
+ * Stores bytes the server generated, such as a Writer export, with their
+ * type and download disposition. Never used for browser uploads.
+ */
+export async function put(
+  key: string,
+  body: Uint8Array,
+  contentType: string,
+  contentDisposition: string,
+): Promise<void> {
+  const { client, bucket } = storage();
+  await client.send(
+    new PutObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      Body: body,
+      ContentType: contentType,
+      ContentLength: body.byteLength,
+      ContentDisposition: contentDisposition,
+    }),
+  );
+}

@@ -17,6 +17,7 @@
   "devDependencies": {
     "@types/node": "^26.6.4",
     "@types/pg": "^8.23.1",
+    "jszip": "3.10.2",
     "prisma": "7.10.0",
     "vitest": "4.1.11"
   },
