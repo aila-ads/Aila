@@ -1,0 +1,20 @@
+@theme {
+  --color-background: #ffffff;
+  --color-foreground: #111111;
+  --color-surface: #f8f9fa;
+  --color-surface-elevated: #ffffff;
+  --color-muted: #6b7280;
+  --color-border: #e5e7eb;
+  --color-border-strong: #d1d5db;
+  --color-primary: #111111;
+  --color-primary-foreground: #ffffff;
+  --color-focus: #2563eb;
+
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 12px rgb(0 0 0 / 0.08);
+}
