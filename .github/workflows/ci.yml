@@ -17,10 +17,20 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Validate Docker credentials
+        env:
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME || vars.DOCKER_USER }}
+          DOCKER_PAT: ${{ secrets.DOCKER_PAT }}
+        run: |
+          if [ -z "$DOCKER_USERNAME" ] || [ -z "$DOCKER_PAT" ]; then
+            echo "::error::Missing Docker credentials. Set DOCKER_USERNAME (or DOCKER_USER) and DOCKER_PAT."
+            exit 1
+          fi
+
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
-          username: ${{ vars.DOCKER_USER }}
+          username: ${{ secrets.DOCKER_USERNAME || vars.DOCKER_USER }}
           password: ${{ secrets.DOCKER_PAT }}
 
       - name: Set up Docker Buildx Cloud
