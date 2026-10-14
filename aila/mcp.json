@@ -1,0 +1,23 @@
+{
+    "mcpServers": {
+    "vercel": {
+    "url": "https://mcp.vercel.com"
+    },
+    "MCP_DOCKER": {
+    "command": "docker",
+    "args": [
+    "mcp",
+    "gateway",
+    "run",
+    "--profile",
+    "ai_coding"
+    ],
+    "env": {
+    "LOCALAPPDATA": "C:\\Users\\Aila\\AppData\\Local",
+    "ProgramData": "C:\\ProgramData",
+    "ProgramFiles": "C:\\Program Files"
+    }
+    }
+    }
+    }
+    
