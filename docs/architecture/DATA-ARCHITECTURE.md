@@ -4,6 +4,8 @@
 **Version:** v1.0  
 **Status:** Production specification  
 **Database:** PostgreSQL via Supabase  
+**Authentication:** Neon Auth (Managed Better Auth)  
+**Object storage:** Neon object storage (S3-compatible)  
 **ORM:** Prisma  
 **Primary authority:** PostgreSQL
 
@@ -45,7 +47,7 @@ No product may create an independent database that duplicates Aila's authoritati
               Identity                  Account
                  │                         │
                  ▼                         ▼
-             Supabase Auth          PostgreSQL Account
+             Neon Auth              PostgreSQL Account
                                            │
              ┌─────────────────────────────┼─────────────────────────────┐
              │                             │                             │
@@ -94,9 +96,9 @@ PostgreSQL is authoritative for:
 
 Other infrastructure has specialized responsibilities.
 
-### Supabase Storage
+### Neon Object Storage
 
-Stores binary files.
+Stores binary files in the private bucket `storage`.
 
 ### Qdrant
 
@@ -112,14 +114,14 @@ These systems must not replace PostgreSQL as the source of transactional truth.
 
 # 4. Identity Model
 
-Supabase Auth manages authentication identities.
+Neon Auth (Managed Better Auth) manages authentication identities.
 
 Aila PostgreSQL stores the application account associated with the authenticated identity.
 
 Conceptually:
 
 ```text
-Supabase Auth User
+Neon Auth User
         │
         │ 1:1
         ▼
@@ -135,7 +137,9 @@ Aila Account
         └── Settings
 ```
 
-The authentication provider identifier must be stored as an external identity reference.
+The authentication provider identifier (the Neon Auth user ID) must be stored as an external identity reference.
+
+Neon Auth and the Supabase PostgreSQL database are separate systems, so this reference is not a database foreign key.
 
 Aila must not duplicate authentication credentials in PostgreSQL.
 
@@ -546,7 +550,7 @@ Production limits and validation must be applied.
 
 PostgreSQL stores file metadata.
 
-Binary content is stored in Supabase Storage.
+Binary content is stored in Neon object storage (S3-compatible, branch-scoped), in the private bucket `storage`.
 
 Conceptual model:
 
@@ -1106,7 +1110,7 @@ Example:
 Delete File
    │
    ├── PostgreSQL metadata
-   ├── Supabase Storage object
+   ├── Neon object storage object
    └── Qdrant vectors
 ```
 
@@ -1367,10 +1371,10 @@ Retention must account for applicable legal, operational, and contractual requir
 The following rules are mandatory.
 
 1. PostgreSQL is the authoritative transactional database.
-2. Supabase Storage stores binary file content.
+2. Neon object storage stores binary file content.
 3. Qdrant stores vector/search data.
 4. Redis stores temporary/cache data.
-5. Authentication credentials are managed by Supabase Auth.
+5. Authentication credentials are managed by Neon Auth.
 6. Every private resource has an ownership or authorization relationship.
 7. Trial state is server-authoritative.
 8. Subscription state is server-authoritative.

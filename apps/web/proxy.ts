@@ -1,84 +1,42 @@
-import { createServerClient } from '@supabase/ssr';
-import { NextResponse, type NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { protectRequest } from '@aila/auth/proxy';
+import { contentSecurityPolicy } from './lib/csp';
+import { isPublicPath } from './lib/public-paths';
 
-const PUBLIC_PATHS = new Set([
-  '/',
-  '/login',
-  '/signup',
-  '/auth/callback',
-]);
-
+/**
+ * Deny by default (SECURITY-ARCHITECTURE §2.3): every path that is not
+ * allowed by isPublicPath requires a valid Neon Auth session. Pages and
+ * handlers also check the session on the server; this proxy is not the
+ * only check.
+ */
 export async function proxy(request: NextRequest) {
-  let response = NextResponse.next({
-    request,
+  const { pathname } = request.nextUrl;
+  const csp = contentSecurityPolicy({
+    nonce: btoa(crypto.randomUUID()),
+    storageEndpoint: process.env.STORAGE_ENDPOINT,
+    development: process.env.NODE_ENV === 'development',
   });
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  // Next.js reads the nonce from the request's CSP header and puts it on
+  // the scripts it renders; the browser enforces the response header.
+  const headers = new Headers(request.headers);
+  headers.set('Content-Security-Policy', csp);
 
-  if (!supabaseUrl || !supabaseAnonKey) {
-    throw new Error('Supabase authentication environment is not configured');
+  let response: NextResponse;
+
+  if (isPublicPath(pathname)) {
+    response = NextResponse.next({ request: { headers } });
+  } else {
+    // Includes /auth/callback, where Neon Auth completes the Google sign-in.
+    // Neon Auth reads only the URL, headers and cookies, and forwards these
+    // headers (with the CSP) to the page. The body is never read here.
+    response = await protectRequest(
+      new NextRequest(request.url, { method: request.method, headers }),
+      '/login',
+    );
   }
 
-  const supabase = createServerClient(
-    supabaseUrl,
-    supabaseAnonKey,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll();
-        },
-        setAll(cookiesToSet) {
-          for (const { name, value, options } of cookiesToSet) {
-            request.cookies.set(name, value);
-          }
-
-          response = NextResponse.next({
-            request,
-          });
-
-          for (const { name, value, options } of cookiesToSet) {
-            response.cookies.set(name, value, options);
-          }
-        },
-      },
-    },
-  );
-
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
-
-  if (authError) {
-    console.error('Supabase session validation failed', {
-      code: authError.code,
-    });
-  }
-
-  const pathname = request.nextUrl.pathname;
-
-  const isPublic =
-    PUBLIC_PATHS.has(pathname) ||
-    pathname.startsWith('/_next/') ||
-    pathname.startsWith('/api/auth/');
-
-  if (!user && !isPublic) {
-    const url = request.nextUrl.clone();
-    url.pathname = '/login';
-    url.searchParams.set('redirect', pathname);
-
-    return NextResponse.redirect(url);
-  }
-
-  if (user && (pathname === '/login' || pathname === '/signup')) {
-    const url = request.nextUrl.clone();
-    url.pathname = '/dashboard';
-    url.searchParams.delete('redirect');
-
-    return NextResponse.redirect(url);
-  }
-
+  response.headers.set('Content-Security-Policy', csp);
   return response;
 }
 

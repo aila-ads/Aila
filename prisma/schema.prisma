@@ -18,8 +18,13 @@ enum AccountStatus {
 
 enum MembershipRole {
   OWNER
-  ADMIN
   MEMBER
+}
+
+// Application role, set only by the backend (DATA-ARCHITECTURE §7).
+enum UserRole {
+  USER
+  ADMIN
 }
 
 enum TrialStatus {
@@ -41,10 +46,20 @@ enum SubscriptionStatus {
 
 enum BillingProvider {
   FLUTTERWAVE
+  PAYSTACK
+  PAYPAL
 }
 
 enum PlanCode {
   AILA_PRO
+}
+
+// One provider charge (DATA-ARCHITECTURE §14): PENDING while a checkout is
+// open, then SUCCEEDED or FAILED from the provider's verified result.
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
 }
 
 enum EntitlementStatus {
@@ -72,6 +87,13 @@ enum UsageType {
   EXPORT
 }
 
+// Outcome of a metered operation (DATABASE-SCHEMA §18).
+enum UsageStatus {
+  SUCCESS
+  FAILURE
+  CANCELLED
+}
+
 enum ProjectStatus {
   ACTIVE
   ARCHIVED
@@ -84,11 +106,15 @@ enum ProjectRole {
   VIEWER
 }
 
+// File lifecycle (DATABASE-SCHEMA §26): UPLOADING -> READY, or FAILED;
+// DELETED once removed. ACTIVE is kept for existing values but not used.
 enum FileStatus {
   ACTIVE
   PROCESSING
   FAILED
   DELETED
+  UPLOADING
+  READY
 }
 
 enum FileSource {
@@ -139,12 +165,18 @@ enum AuditSeverity {
   CRITICAL
 }
 
+enum AuditResult {
+  SUCCESS
+  FAILURE
+  DENIED
+}
+
 // ============================================================
 // ACCOUNT / IDENTITY
 // ============================================================
 
 model Account {
-  id     String        @id @default(cuid())
+  id     String        @id @default(uuid(7))
   status AccountStatus @default(ACTIVE)
 
   name         String?
@@ -166,14 +198,22 @@ model Account {
   settings      UserSettings?
   auditLogs     AuditLog[]
   billingEvents BillingEvent[]
+  payments      Payment[]
   projects      Project[]
+
+  writerProjects      WriterProject[]
+  writerNodes         WriterNode[]
+  writerVersions      WriterVersion[]
+  writerResearchItems WriterResearchItem[]
+  writerReferences    WriterReference[]
+  writerExports       WriterExport[]
 
   @@index([status])
   @@index([createdAt])
 }
 
 model User {
-  id         String @id @default(cuid())
+  id         String @id @default(uuid(7))
   accountId  String
   authUserId String @unique
 
@@ -182,6 +222,7 @@ model User {
   name            String?
 
   status AccountStatus @default(ACTIVE)
+  role   UserRole      @default(USER)
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -198,14 +239,22 @@ model User {
   settings        UserSettings?
   auditLogs       AuditLog[]
   usageRecords    UsageRecord[]
+  payments        Payment[]
   files           File[]
+
+  writerProjects      WriterProject[]
+  writerNodes         WriterNode[]
+  writerVersions      WriterVersion[]
+  writerResearchItems WriterResearchItem[]
+  writerReferences    WriterReference[]
+  writerExports       WriterExport[]
 
   @@index([accountId])
   @@index([status])
 }
 
 model Membership {
-  id        String @id @default(cuid())
+  id        String @id @default(uuid(7))
   accountId String
   userId    String
 
@@ -227,7 +276,7 @@ model Membership {
 // ============================================================
 
 model Trial {
-  id        String @id @default(cuid())
+  id        String @id @default(uuid(7))
   accountId String @unique
 
   startedAt DateTime
@@ -250,7 +299,7 @@ model Trial {
 // ============================================================
 
 model Subscription {
-  id        String @id @default(cuid())
+  id        String @id @default(uuid(7))
   accountId String
 
   provider               BillingProvider
@@ -271,6 +320,7 @@ model Subscription {
 
   account       Account        @relation(fields: [accountId], references: [id], onDelete: Cascade)
   billingEvents BillingEvent[]
+  payments      Payment[]
 
   @@unique([provider, providerSubscriptionId])
   @@index([accountId, status])
@@ -279,7 +329,7 @@ model Subscription {
 }
 
 model BillingEvent {
-  id             String  @id @default(cuid())
+  id             String  @id @default(uuid(7))
   accountId      String?
   subscriptionId String?
 
@@ -290,6 +340,8 @@ model BillingEvent {
   payloadHash String
 
   processedAt DateTime?
+  // Why a verified event was rejected or failed (DATABASE-SCHEMA §15).
+  errorCode   String?
   createdAt   DateTime  @default(now())
 
   account      Account?      @relation(fields: [accountId], references: [id], onDelete: SetNull)
@@ -302,12 +354,54 @@ model BillingEvent {
   @@index([createdAt])
 }
 
+// Maps a provider transaction to the account it belongs to and records the
+// amount and currency it must match (SECURITY-ARCHITECTURE §21.1). The
+// unique provider references make each charge count once.
+model Payment {
+  id             String  @id @default(cuid())
+  accountId      String
+  userId         String?
+  subscriptionId String?
+
+  provider              BillingProvider
+  txRef                 String
+  providerTransactionId String?
+
+  plan     PlanCode
+  amount   Decimal       @db.Decimal(20, 2)
+  currency String        @db.VarChar(3)
+  status   PaymentStatus @default(PENDING)
+  // A one-month Aila Pro purchase that does not renew on its own; false for
+  // the Flutterwave card plan's first charge and its renewals.
+  oneTime  Boolean       @default(false)
+
+  // Set only on checkouts Aila created: the provider's hosted link, reused
+  // while it is still open. Renewal charges have neither.
+  checkoutUrl       String?
+  checkoutExpiresAt DateTime?
+  paidAt            DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  account      Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  user         User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  subscription Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+
+  @@unique([provider, providerTransactionId])
+  // Not unique: Flutterwave sets the reference of renewal charges, and the
+  // one transaction ID per charge is what makes it count once.
+  @@index([provider, txRef])
+  @@index([accountId, status, createdAt])
+  @@index([subscriptionId])
+}
+
 // ============================================================
 // ENTITLEMENTS
 // ============================================================
 
 model Entitlement {
-  id        String @id @default(cuid())
+  id        String @id @default(uuid(7))
   accountId String
 
   product ProductCode
@@ -336,7 +430,7 @@ model Entitlement {
 // ============================================================
 
 model UsageRecord {
-  id String @id @default(cuid())
+  id String @id @default(uuid(7))
 
   accountId String
   userId    String?
@@ -346,6 +440,9 @@ model UsageRecord {
 
   quantity Decimal @db.Decimal(20, 6)
   unit     String?
+
+  // What was done, e.g. the AI capability (DATABASE-SCHEMA §18).
+  operation String?
 
   model    String?
   provider String?
@@ -360,6 +457,9 @@ model UsageRecord {
   estimatedCost Decimal? @db.Decimal(20, 8)
   currency      String?
 
+  durationMs Int?
+  status     UsageStatus?
+
   metadata Json?
 
   createdAt DateTime @default(now())
@@ -368,6 +468,8 @@ model UsageRecord {
   user    User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([accountId, createdAt])
+  // Per-account usage-limit counts (AI-GATEWAY §14).
+  @@index([accountId, usageType, createdAt])
   @@index([userId, createdAt])
   @@index([product, createdAt])
   @@index([usageType, createdAt])
@@ -380,7 +482,7 @@ model UsageRecord {
 // ============================================================
 
 model Project {
-  id        String @id @default(cuid())
+  id        String @id @default(uuid(7))
   accountId String
 
   name        String
@@ -408,7 +510,7 @@ model Project {
 }
 
 model ProjectMember {
-  id        String @id @default(cuid())
+  id        String @id @default(uuid(7))
   projectId String
   userId    String
 
@@ -425,7 +527,7 @@ model ProjectMember {
 }
 
 model Folder {
-  id        String @id @default(cuid())
+  id        String @id @default(uuid(7))
   projectId String
 
   parentId String?
@@ -449,7 +551,7 @@ model Folder {
 // ============================================================
 
 model File {
-  id String @id @default(cuid())
+  id String @id @default(uuid(7))
 
   accountId String
   userId    String
@@ -461,7 +563,7 @@ model File {
   mimeType  String
   sizeBytes BigInt
 
-  storageKey String
+  storageKey String  @unique
   checksum   String?
 
   source FileSource
@@ -480,16 +582,18 @@ model File {
 
   versions FileVersion[]
 
+  writerReferences WriterReference[]
+  writerExport     WriterExport?
+
   @@index([accountId, status])
   @@index([userId])
   @@index([projectId])
   @@index([folderId])
-  @@index([storageKey])
   @@index([createdAt])
 }
 
 model FileVersion {
-  id     String @id @default(cuid())
+  id     String @id @default(uuid(7))
   fileId String
 
   version    Int
@@ -512,7 +616,7 @@ model FileVersion {
 // ============================================================
 
 model Conversation {
-  id String @id @default(cuid())
+  id String @id @default(uuid(7))
 
   accountId String
   userId    String
@@ -540,7 +644,7 @@ model Conversation {
 }
 
 model Message {
-  id String @id @default(cuid())
+  id String @id @default(uuid(7))
 
   conversationId String
   userId         String?
@@ -573,7 +677,7 @@ model Message {
 // ============================================================
 
 model Notification {
-  id String @id @default(cuid())
+  id String @id @default(uuid(7))
 
   accountId String
   userId    String
@@ -597,7 +701,7 @@ model Notification {
 }
 
 model UserSettings {
-  id String @id @default(cuid())
+  id String @id @default(uuid(7))
 
   accountId String @unique
   userId    String @unique
@@ -619,7 +723,7 @@ model UserSettings {
 // ============================================================
 
 model AuditLog {
-  id String @id @default(cuid())
+  id String @id @default(uuid(7))
 
   accountId String?
   userId    String?
@@ -629,6 +733,9 @@ model AuditLog {
 
   resourceType String?
   resourceId   String?
+
+  result    AuditResult?
+  requestId String?
 
   ipAddress String?
   userAgent String?
@@ -645,4 +752,263 @@ model AuditLog {
   @@index([action, createdAt])
   @@index([severity, createdAt])
   @@index([resourceType, resourceId])
+  @@index([requestId])
+}
+
+// ============================================================
+// AILA WRITER (docs/products/WRITER.md §7-14, §24-25, §31-33, §48-50)
+// ============================================================
+
+// What a Writer project is (WRITER §7).
+enum WriterDocumentType {
+  BOOK
+  NOVEL
+  NONFICTION
+  REPORT
+  THESIS
+  MANUSCRIPT
+  GUIDE
+  ARTICLE
+  BLOG
+  DOCUMENTATION
+  RESEARCH_NOTES
+  OTHER
+}
+
+// Levels of the document hierarchy (WRITER §8): Document > Part > Chapter
+// > Section. Not every project uses every level.
+enum WriterNodeKind {
+  DOCUMENT
+  PART
+  CHAPTER
+  SECTION
+}
+
+enum WriterNodeStatus {
+  DRAFT
+  IN_PROGRESS
+  REVISED
+  FINAL
+}
+
+// Why a version was kept (WRITER §14). Autosaves are not versions; a
+// MILESTONE is kept automatically after a long stretch of autosaved edits.
+enum WriterVersionSource {
+  MANUAL
+  MILESTONE
+  AI
+  RESTORE
+}
+
+enum WriterResearchKind {
+  QUESTION
+  NOTE
+  SOURCE
+}
+
+enum WriterExportFormat {
+  PDF
+  DOCX
+  EPUB
+}
+
+enum WriterExportStatus {
+  PROCESSING
+  READY
+  FAILED
+}
+
+// A persistent writing work owned by one account (WRITER §7). Project
+// context (style, terminology, characters, setting) and goals live here.
+model WriterProject {
+  id          String @id @default(uuid(7))
+  accountId   String
+  createdById String
+
+  title        String
+  subtitle     String?
+  description  String?
+  documentType WriterDocumentType @default(BOOK)
+  language     String             @default("en")
+  audience     String?
+  authorName   String?
+
+  // Project context (WRITER §22), editable by the user and sent to the AI
+  // as the author's instructions.
+  goals             String?
+  styleInstructions String?
+  terminology       String?
+  contextNotes      String?
+
+  // Informational goals (WRITER §30); never block writing.
+  wordGoal    Int?
+  chapterGoal Int?
+
+  status ProjectStatus @default(ACTIVE)
+
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  archivedAt DateTime?
+  deletedAt  DateTime?
+
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  createdBy User    @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  nodes         WriterNode[]
+  versions      WriterVersion[]
+  researchItems WriterResearchItem[]
+  references    WriterReference[]
+  exports       WriterExport[]
+
+  @@index([accountId, status, updatedAt])
+  @@index([createdById])
+}
+
+// One unit of the hierarchy: a document, part, chapter or section (WRITER
+// §8-10). Order among siblings is the stored position, never the client's
+// array order. `revision` changes with every content save, so a save based
+// on older content is refused instead of overwriting newer work (§13).
+model WriterNode {
+  id          String  @id @default(uuid(7))
+  accountId   String
+  projectId   String
+  parentId    String?
+  createdById String
+
+  kind     WriterNodeKind
+  title    String
+  summary  String?
+  position Int
+  status   WriterNodeStatus @default(DRAFT)
+
+  content   String @default("")
+  wordCount Int    @default(0)
+  charCount Int    @default(0)
+  revision  Int    @default(1)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  // In the project's trash; restorable until the project is deleted.
+  deletedAt DateTime?
+
+  account   Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  project   WriterProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  parent    WriterNode?   @relation("WriterNodeTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children  WriterNode[]  @relation("WriterNodeTree")
+  createdBy User          @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  versions WriterVersion[]
+  exports  WriterExport[]
+
+  @@index([projectId, parentId, position])
+  @@index([accountId, projectId])
+  @@index([projectId, deletedAt])
+}
+
+// A kept copy of a node's title and content (WRITER §14-15). Versions are
+// never changed; a restore adds new versions instead of removing any.
+model WriterVersion {
+  id          String  @id @default(uuid(7))
+  accountId   String
+  projectId   String
+  nodeId      String
+  createdById String?
+
+  versionNumber Int
+  revision      Int
+  source        WriterVersionSource
+  label         String?
+
+  title     String
+  content   String
+  wordCount Int
+
+  createdAt DateTime @default(now())
+
+  account   Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  project   WriterProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  node      WriterNode    @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  createdBy User?         @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([nodeId, versionNumber])
+  @@index([accountId, projectId])
+  @@index([nodeId, createdAt])
+}
+
+// Research questions, notes and sources (WRITER §24). A source keeps its
+// URL and title so attribution is preserved.
+model WriterResearchItem {
+  id          String @id @default(uuid(7))
+  accountId   String
+  projectId   String
+  createdById String
+
+  kind        WriterResearchKind
+  title       String
+  body        String?
+  url         String?
+  sourceTitle String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  account   Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  project   WriterProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy User          @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([projectId, createdAt])
+  @@index([accountId])
+}
+
+// A file from the account's Files attached to a project as reference
+// material (WRITER §25). The file itself stays in the shared file service.
+model WriterReference {
+  id          String @id @default(uuid(7))
+  accountId   String
+  projectId   String
+  fileId      String
+  createdById String
+
+  createdAt DateTime @default(now())
+
+  account   Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  project   WriterProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  file      File          @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  createdBy User          @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@unique([projectId, fileId])
+  @@index([accountId])
+  @@index([fileId])
+}
+
+// One export request and its result (WRITER §31-33). The generated file is
+// a private GENERATED file in the shared file service. `requestKey` makes a
+// repeated submission return the same export instead of running twice.
+model WriterExport {
+  id          String  @id @default(uuid(7))
+  accountId   String
+  projectId   String
+  // Null when the whole project was exported.
+  nodeId      String?
+  fileId      String? @unique
+  createdById String
+
+  format     WriterExportFormat
+  status     WriterExportStatus @default(PROCESSING)
+  requestKey String
+  fileName   String
+  sizeBytes  Int?
+  errorCode  String?
+
+  createdAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  account   Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  project   WriterProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  node      WriterNode?   @relation(fields: [nodeId], references: [id], onDelete: SetNull)
+  file      File?         @relation(fields: [fileId], references: [id], onDelete: SetNull)
+  createdBy User          @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@unique([accountId, requestKey])
+  @@index([projectId, createdAt])
 }

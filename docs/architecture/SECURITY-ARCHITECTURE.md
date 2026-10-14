@@ -284,8 +284,9 @@ Aila Web Application
    ├── Storage Service
    └── Product Services
           │
-          ├── PostgreSQL
-          ├── Supabase Storage
+          ├── Neon Auth
+          ├── PostgreSQL (Supabase)
+          ├── Neon Object Storage
           ├── Qdrant
           ├── Upstash
           ├── AI Provider
@@ -303,7 +304,7 @@ Data sent to an external provider must be intentionally selected and minimized.
 
 # 6. Authentication
 
-Aila V1 uses Supabase Auth as the authentication system.
+Aila V1 uses Neon Auth (Managed Better Auth) as the authentication system.
 
 Authentication responsibilities include:
 
@@ -1003,8 +1004,9 @@ A webhook event must not cause duplicate subscription effects.
 
 Secrets include:
 
-- database credentials
-- Supabase service credentials
+- database credentials (Supabase PostgreSQL)
+- Neon Auth secrets
+- Neon object storage credentials
 - AI provider keys
 - Flutterwave credentials
 - Resend credentials
@@ -1219,7 +1221,7 @@ Database queries must always enforce authorization at the application boundary.
 
 # 31. Storage Security
 
-Supabase Storage is used for binary objects.
+Neon object storage (S3-compatible, branch-scoped) is used for binary objects, in the private bucket `storage`, accessed only through the server or short-lived signed URLs.
 
 Requirements:
 

@@ -1,29 +1,24 @@
-import { createServerClient, type CookieOptions } from '@supabase/ssr';
-import type { SupabaseClient } from '@supabase/supabase-js';
-import { authEnv } from './env';
+import { createNeonAuth } from '@neondatabase/auth/next/server';
+import { getAuthEnv } from './env';
 
-export type AuthCookieAdapter = {
-  getAll: () => { name: string; value: string }[];
-  setAll: (
-    cookies: {
-      name: string;
-      value: string;
-      options: CookieOptions;
-    }[],
-  ) => void;
-};
+type NeonAuth = ReturnType<typeof createNeonAuth>;
 
-export function createAuthServerClient(
-  cookies: AuthCookieAdapter,
-): SupabaseClient {
-  return createServerClient(
-    authEnv.supabaseUrl,
-    authEnv.supabaseAnonKey,
-    {
-      cookies: {
-        getAll: cookies.getAll,
-        setAll: cookies.setAll,
-      },
-    },
-  );
+let instance: NeonAuth | undefined;
+
+/**
+ * The single Neon Auth (Managed Better Auth) instance: server methods,
+ * the /api/auth proxy handler and the route-protection middleware.
+ * Created on first use so configuration is read at runtime only.
+ */
+export function getAuth(): NeonAuth {
+  if (!instance) {
+    const { baseUrl, cookieSecret } = getAuthEnv();
+
+    instance = createNeonAuth({
+      baseUrl,
+      cookies: { secret: cookieSecret },
+    });
+  }
+
+  return instance;
 }

@@ -2,5 +2,19 @@
   "name": "@aila/ai",
   "version": "0.1.0",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@aila/auth": "workspace:*",
+    "@aila/db": "workspace:*",
+    "@aila/validation": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
 }

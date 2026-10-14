@@ -1,48 +1,66 @@
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import { createServerClient } from '@supabase/ssr';
+import { isAppError } from '@aila/validation';
+import {
+  assertActiveIdentity,
+  AuthIdentityError,
+  ensureAilaIdentity,
+  getAuth,
+  getSessionUser,
+  recordAuthEvent,
+} from '@aila/auth/server';
+import { safeRedirectPath } from '../../../lib/safe-redirect';
 
+export const dynamic = 'force-dynamic';
+
+/**
+ * Landing route after Google sign-in. Neon Auth's proxy middleware has
+ * already exchanged the one-time verifier for session cookies; this route
+ * links or provisions the Aila identity, refuses suspended or deleted
+ * accounts, audits the sign-in and continues.
+ */
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
-  const code = requestUrl.searchParams.get('code');
+  const redirectTo = safeRedirectPath(requestUrl.searchParams.get('redirect'));
+  const failure = new URL('/login?error=google', requestUrl.origin);
 
-  if (!code) {
-    return NextResponse.redirect(new URL('/login?error=missing_code', requestUrl.origin));
+  let authUser;
+
+  try {
+    authUser = await getSessionUser();
+  } catch {
+    return NextResponse.redirect(failure);
   }
 
-  const cookieStore = await cookies();
-
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  if (!supabaseUrl || !supabaseAnonKey) {
-    throw new Error('Supabase authentication environment is not configured');
+  if (!authUser) {
+    return NextResponse.redirect(failure);
   }
 
-  const supabase = createServerClient(
-    supabaseUrl,
-    supabaseAnonKey,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll();
-        },
-        setAll(cookiesToSet) {
-          for (const { name, value, options } of cookiesToSet) {
-            cookieStore.set(name, value, options);
-          }
-        },
-      },
-    },
-  );
+  try {
+    const identity = await ensureAilaIdentity(authUser);
+    await assertActiveIdentity(identity);
 
-  const { error } = await supabase.auth.exchangeCodeForSession(code);
+    await recordAuthEvent({
+      action: 'LOGIN',
+      method: 'google',
+      accountId: identity.accountId,
+      userId: identity.id,
+    });
+  } catch (error) {
+    await getAuth().signOut();
 
-  if (error) {
-    return NextResponse.redirect(
-      new URL('/login?error=auth_callback_failed', requestUrl.origin),
-    );
+    if (error instanceof AuthIdentityError && error.code === 'EMAIL_NOT_VERIFIED') {
+      return NextResponse.redirect(new URL('/verify-email', requestUrl.origin));
+    }
+
+    if (isAppError(error) && error.reason === 'ACCOUNT_RESTRICTED') {
+      return NextResponse.redirect(new URL('/login?error=restricted', requestUrl.origin));
+    }
+
+    console.error('[auth] Could not resolve Aila identity after Google sign-in', {
+      error: error instanceof AuthIdentityError ? error.code : 'UNEXPECTED',
+    });
+    return NextResponse.redirect(new URL('/login?error=account', requestUrl.origin));
   }
 
-  return NextResponse.redirect(new URL('/dashboard', requestUrl.origin));
+  return NextResponse.redirect(new URL(redirectTo, requestUrl.origin));
 }
