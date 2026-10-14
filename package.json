@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "@prisma/client": "7.10.0",
+    "ai": "7.0.137",
     "dotenv": "18.0.5"
   }
 }
