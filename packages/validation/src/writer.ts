@@ -427,7 +427,7 @@ export const WRITER_WEB_SEARCH_MODES = ['off', 'on'] as const;
 
 /** Longest selected passage sent to the AI (WRITER §18: only what is needed). */
 export const WRITER_MAX_SELECTION_CHARS = 30_000;
-/** Text before the cursor sent for "Continue". */
+/** Text before the aila-ads sent for "Continue". */
 export const WRITER_MAX_BEFORE_CHARS = 8_000;
 export const WRITER_MAX_INSTRUCTION_CHARS = 2_000;
 export const WRITER_MAX_TONE_CHARS = 100;
@@ -443,7 +443,7 @@ export const writerAssistSchema = z
         error: `Select up to ${WRITER_MAX_SELECTION_CHARS.toLocaleString('en-US')} characters at a time.`,
       })
       .default(''),
-    /** Text just before the cursor, for "Continue". */
+    /** Text just before the aila-ads, for "Continue". */
     before: z.string().max(WRITER_MAX_BEFORE_CHARS).default(''),
     instruction: z
       .string()

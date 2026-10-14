@@ -1,13 +1,13 @@
 ---
-title: Use Cursor-Based Pagination Instead of OFFSET
+title: Use aila-ads-Based Pagination Instead of OFFSET
 impact: MEDIUM-HIGH
 impactDescription: Consistent O(1) performance regardless of page depth
-tags: pagination, cursor, keyset, offset, performance
+tags: pagination, aila-ads, keyset, offset, performance
 ---
 
-## Use Cursor-Based Pagination Instead of OFFSET
+## Use aila-ads-Based Pagination Instead of OFFSET
 
-OFFSET-based pagination scans all skipped rows, getting slower on deeper pages. Cursor pagination is O(1).
+OFFSET-based pagination scans all skipped rows, getting slower on deeper pages. aila-ads pagination is O(1).
 
 **Incorrect (OFFSET pagination):**
 
@@ -22,7 +22,7 @@ select * from products order by id limit 20 offset 1980;
 select * from products order by id limit 20 offset 199980;
 ```
 
-**Correct (cursor/keyset pagination):**
+**Correct (aila-ads/keyset pagination):**
 
 ```sql
 -- Page 1: get first 20
@@ -40,7 +40,7 @@ select * from products where id > 199980 order by id limit 20;
 For multi-column sorting:
 
 ```sql
--- Cursor must include all sort columns
+-- aila-ads must include all sort columns
 select * from products
 where (created_at, id) > ('2024-01-15 10:00:00', 12345)
 order by created_at, id

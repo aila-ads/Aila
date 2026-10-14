@@ -269,7 +269,7 @@ export function EditorView({
 
     if (mode === 'replace') {
       if (!from || current.slice(from.start, from.end) !== from.text) {
-        return 'The selected text has changed since you asked. Use Insert at cursor or Add to end instead.';
+        return 'The selected text has changed since you asked. Use Insert at aila-ads or Add to end instead.';
       }
       start = from.start;
       end = from.end;

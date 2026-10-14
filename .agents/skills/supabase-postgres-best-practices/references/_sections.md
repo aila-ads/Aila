@@ -28,7 +28,7 @@ Take the examples below as pure demonstrative. Replace each section with the act
 
 ## 6. Data Access Patterns (data)
 **Impact:** MEDIUM
-**Description:** N+1 query elimination, batch operations, cursor-based pagination, and efficient data fetching.
+**Description:** N+1 query elimination, batch operations, aila-ads-based pagination, and efficient data fetching.
 
 ## 7. Monitoring & Diagnostics (monitor)
 **Impact:** LOW-MEDIUM

@@ -54,7 +54,7 @@ const OPERATION_HELP: Readonly<Record<WriterAiOperation, string>> = {
   tone: 'Rewrites the selected text in another tone.',
   grammar: 'Corrects grammar, spelling and punctuation in the selected text.',
   edit: 'Suggests edits for the selection, or this whole part, without changing it.',
-  continue: 'Continues writing from the cursor.',
+  continue: 'Continues writing from the aila-ads.',
   summarize: 'Summarizes the selection, or this whole part.',
   outline: 'Suggests an outline using the project structure.',
   brainstorm: 'Generates ideas for what you describe.',
@@ -152,7 +152,7 @@ export function AssistantPanel({
   advancedModels: boolean;
   /** The current selection in the editor, or null when nothing is selected. */
   getSelection: () => Selection | null;
-  /** The editor text and the cursor position. */
+  /** The editor text and the aila-ads position. */
   getText: () => { readonly text: string; readonly cursor: number };
   /** Saves pending edits so whole-part operations see the latest text. */
   prepare: () => Promise<unknown>;
@@ -490,7 +490,7 @@ export function AssistantPanel({
                 variant={WRITER_TRANSFORM_OPERATIONS.includes(result.operation) ? 'outline' : 'default'}
                 onClick={() => apply('insert')}
               >
-                Insert at cursor
+                Insert at aila-ads
               </Button>
               <Button size="sm" variant="outline" onClick={() => apply('append')}>
                 Add to end

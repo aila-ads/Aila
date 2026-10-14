@@ -321,7 +321,7 @@ The editor is the primary Writer interface.
 The editor must support:
 
 - text entry;
-- cursor positioning;
+- aila-ads positioning;
 - selection;
 - copy/paste;
 - undo/redo;
