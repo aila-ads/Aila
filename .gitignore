@@ -1,0 +1,56 @@
+# Dependencies
+node_modules/
+
+# Builds
+.next/
+dist/
+build/
+coverage/
+.turbo/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# Runtime / caches
+.cache/
+.tmp/
+.temp/
+
+# Test artifacts
+playwright-report/
+test-results/
+
+# Local databases
+*.db
+*.sqlite
+*.sqlite3
+.neon
+.vercel
+
+# Local shell configuration / history
+.bashrc
+.bashrc.bak
+.bash_history
+.bash_history.*
+
+# Generated TypeScript / Next.js files
+**/tsconfig.tsbuildinfo
+**/next-env.d.ts
+
+# Local Git configuration
+.gitconfig
